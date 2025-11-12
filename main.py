@@ -41,13 +41,13 @@ def pde(x, u):
 
     # WLF 公式在对数空间
     logaT = -8.86*(T-25)/(101.6+T-25)
-    sig_ref, alpha, m = 2.1e6, 0.78, 0.11
+    sig_ref, alpha, m = 2.1e6, 0.78, 0.11  #sig_ref(温度25℃，剪切率0.01 s⁻¹的屈服应力)
 
     # 使用 numpy 的 log10 常量值
-    log10_sig_ref = 6.322219  # np.log10(2.1e6)
+    log10_sig_ref = 6.322219  # np.log10(基准屈服应力)
     log10_1e_minus_2 = -2.0   # np.log10(1e-2)
 
-    log_sig_wlf = log10_sig_ref + alpha * logaT + m * log_edot - m * log10_1e_minus_2
+    log_sig_wlf = log10_sig_ref + alpha * logaT + m * np.log10(edot/1e-2)
 
     return u - log_sig_wlf  # 强制网络输出等于 WLF 真值
 
