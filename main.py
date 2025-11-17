@@ -1,117 +1,81 @@
-import deepxde as dde
 import numpy as np
+import pandas as pd
+import torch, torch.nn as nn
+from torch.utils.data import TensorDataset, DataLoader
 
-# 设置 DeepXDE 使用 float32
-dde.config.set_default_float("float32")
+# ---------- 1  机理参数 ----------
+R     = 8.314
+Ea    = 60e3          # J/mol
+A     = 1e8           # arb. units
+Phi_m = 0.68          # 最大堆积
+eta_liquid_0 = 1.0    # Pa·s @ 25°C
+T_ref = 25 + 273.15   # K
 
-# 1. 机理生成（使用对数空间避免数值溢出）
-def yield_WLF_log(T, edot):
-    """计算 log10(σ_y)，避免数值溢出"""
-    logaT = -8.86*(T-25)/(101.6+T-25)
-    sig_ref, alpha, m = 2.1e6, 0.78, 0.11
-
-    # 在对数空间计算: log10(σ) = log10(sig_ref) + alpha*logaT + m*log10(edot/1e-2)
-    log_sig = np.log10(sig_ref) + alpha * logaT + m * np.log10(edot/1e-2)
-    return log_sig
-
-def yield_WLF(T, edot):
-    """计算 σ_y [Pa]"""
-    return 10 ** yield_WLF_log(T, edot)
-
-# 生成训练数据（限制温度范围避免极端值）
+# ---------- 2  工况网格 ----------
+N = 5000
 np.random.seed(42)
-T  = np.random.uniform(0, 60, 2000).astype(np.float32)  # 限制在 0-60°C
-edot = 10**(np.random.uniform(-3, 1, 2000)).astype(np.float32)  # 1e-3 到 10 s⁻¹
+T  = np.random.uniform(25, 65, N) + 273.15        # K
+Phi= np.random.uniform(0.50, 0.66, N)             # 体积分数
+E  = np.random.uniform(100, 800, N)               # kJ 混合功
+t  = np.random.uniform(0, 3*3600, N)              # s  静置时间
 
-# 使用对数空间
-log_sig_y = yield_WLF_log(T, edot).astype(np.float32)
-log_edot = np.log10(edot).astype(np.float32)
+# ---------- 3  机理生成函数 ----------
+def tau0_mechanism(T, Phi, E, t):
+    # 3.1 KD 有效堆积 → 网络密度
+    Phi_eff = Phi_m * (1 - np.exp(-E/400))          # 混合越好 → 有效 Φ_m 越高
+    X = Phi / Phi_eff
+    network = (X / (1 - X))**2                      # 颗粒网络强度 ∝ (Φ/Φ_m) 幂律
 
-X = np.c_[T, log_edot].astype(np.float32)
-y = log_sig_y.reshape(-1,1).astype(np.float32)  # 输出是 log10(σ_y)
+    # 3.2 Arrhenius 固化增强
+    k = A * np.exp(-Ea/(R*T))
+    alpha = 1 - np.exp(-k*t)                        # 固化度 α∈[0,1)
+    chem_boost = 1 + 5*alpha                        # 交联使 τ₀ 增强
 
-print(f"输入范围: T=[{T.min():.1f}, {T.max():.1f}]°C, log10(edot)=[{log_edot.min():.2f}, {log_edot.max():.2f}]")
-print(f"输出范围: log10(σ_y)=[{y.min():.2f}, {y.max():.2f}]")
-print(f"对应 σ_y=[{10**y.min():.2e}, {10**y.max():.2e}] Pa")
+    # 3.3 基准尺度
+    tau0_base = 50 * network                          # Pa
+    tau0 = tau0_base * chem_boost
+    return tau0, alpha
 
-# 2. PINN 定义物理损失（在对数空间）
-def pde(x, u):
-    """u 是预测的 log10(σ_y)"""
-    T, log_edot = x[:,0:1], x[:,1:2]
+tau0, alpha = tau0_mechanism(T, Phi, E, t)
 
-    # WLF 公式在对数空间
-    logaT = -8.86*(T-25)/(101.6+T-25)
-    sig_ref, alpha, m = 2.1e6, 0.78, 0.11  #sig_ref(温度25℃，剪切率0.01 s⁻¹的屈服应力)
+# ---------- 4  构造 DataFrame ----------
+df = pd.DataFrame({'T':T, 'Phi':Phi, 'E':E, 't':t, 'tau0':tau0,
+                   '1/T':1/T, 'X':Phi/Phi_m, 'logt':np.log1p(t),
+                   'alpha':alpha})
+print(df.head())
 
-    # 使用 numpy 的 log10 常量值
-    log10_sig_ref = 6.322219  # np.log10(基准屈服应力)
-    log10_1e_minus_2 = -2.0   # np.log10(1e-2)
+# ---------- 5  神经网络 ----------
+X = df[['1/T', 'X', 'E', 'logt']].values.astype(np.float32)
+y = df['tau0'].values.astype(np.float32)[:,None]
 
-    log_sig_wlf = log10_sig_ref + alpha * logaT + m * np.log10(edot/1e-2)
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+X_tensor = torch.from_numpy(X).to(device)
+y_tensor = torch.from_numpy(y).to(device)
 
-    return u - log_sig_wlf  # 强制网络输出等于 WLF 真值
+net = nn.Sequential(
+        nn.Linear(4, 64), nn.Tanh(),
+        nn.Linear(64, 64), nn.Tanh(),
+        nn.Linear(64, 1)).to(device)
 
-# 定义几何域
-geom = dde.geometry.Rectangle([0, -3], [60, 1])  # T: 0-60°C, log10(edot): -3 to 1
+criterion = nn.MSELoss()
+optimizer = torch.optim.Adam(net.parameters(), lr=1e-3)
 
-# 添加观测数据约束
-data_constraint = dde.icbc.PointSetBC(X, y, component=0)
+loader = DataLoader(TensorDataset(X_tensor, y_tensor),
+                    batch_size=256, shuffle=True)
 
-# 创建 PDE 数据对象
-data = dde.data.PDE(
-    geom,
-    pde,
-    [data_constraint],
-    num_domain=500,
-    num_boundary=0,
-    train_distribution="uniform"
-)
+# ---------- 6  训练 ----------
+for epoch in range(400):
+    for xb, yb in loader:
+        optimizer.zero_grad()
+        loss = criterion(net(xb), yb)
+        loss.backward()
+        optimizer.step()
+    if epoch % 50 == 0:
+        print(f'Epoch {epoch:3d}  loss={loss.item():.4f}')
 
-# 构建网络
-net = dde.nn.FNN([2] + [64]*3 + [1], "tanh", "Glorot normal")
-model = dde.Model(data, net)
+# ---------- 7  预测 ----------
+net.eval()
+with torch.no_grad():
+    y_pred = net(X_tensor).cpu().numpy()
 
-# 编译模型
-model.compile("adam", lr=1e-3, loss_weights=[1, 100])
-
-# 训练
-print("\n开始训练...")
-losshistory, train_state = model.train(iterations=10000, display_every=1000)
-
-# 使用 L-BFGS 进一步优化
-print("\n使用 L-BFGS 优化...")
-model.compile("L-BFGS", loss_weights=[1, 100])  # 保持与 Adam 相同的权重
-losshistory, train_state = model.train()
-
-# 3. 推理
-x_test = np.array([
-    # 边界条件测试
-    [0, np.log10(1e-3)],     # 最低温度 + 最低剪切率
-    [0, np.log10(1e0)],      # 最低温度 + 中等剪切率
-    [60, np.log10(1e-3)],    # 最高温度 + 最低剪切率
-    [60, np.log10(10)],      # 最高温度 + 最高剪切率
-
-    # 中间区域测试
-    [10, np.log10(1e-2)],    # 低温区
-    [25, np.log10(1e-2)],    # 参考温度
-    [40, np.log10(1e-1)],    # 中温区
-    [50, np.log10(1e0)],     # 高温区
-
-    # 对角线测试（温度和应变率同时变化）
-    [15, np.log10(5e-3)],
-    [30, np.log10(5e-2)],
-    [45, np.log10(5e-1)],
-]).astype(np.float32)
-
-pred_log = model.predict(x_test)
-pred = 10 ** pred_log  # 转换回线性空间
-
-true_vals = yield_WLF(x_test[:,0], 10**x_test[:,1])
-
-
-print("条件\t\t\t\t\t\t\t预测值(MPa)\t\t真实值(MPa)\t\t误差(%)")
-print("-" * 80)
-for i, (x, p, t) in enumerate(zip(x_test, pred, true_vals)):
-    T_val, edot_val = x[0], 10**x[1]
-    error = abs(p[0] - t) / t * 100
-    print(f"T={T_val:5.1f}°C, ε̇={edot_val:.1e} s⁻¹\t{p[0]/1e6:.6f}\t\t{t/1e6:.6f}\t\t{error:.6f}")
+print('生成样本 R² =', 1 - np.var(y_pred-y)/np.var(y))
