@@ -44,6 +44,20 @@ tau0, alpha = tau0_mechanism(T, Phi, E, t)
 df = pd.DataFrame({'T':T, 'Phi':Phi, 'E':E, 't':t, 'tau0':tau0,
                    '1/T':1/T, 'X':Phi/Phi_m, 'logt':np.log1p(t),
                    'alpha':alpha})
+
+print("="*80)
+print("数据生成完成")
+print("="*80)
+print(f"样本数量: {N}")
+print(f"\n输入变量范围:")
+print(f"  温度 T:        [{T.min()-273.15:.1f}, {T.max()-273.15:.1f}] °C  (绝对温度: [{T.min():.1f}, {T.max():.1f}] K)")
+print(f"  体积分数 Φ:    [{Phi.min():.3f}, {Phi.max():.3f}]")
+print(f"  混合功 E:      [{E.min():.1f}, {E.max():.1f}] kJ")
+print(f"  静置时间 t:    [{t.min():.1f}, {t.max():.1f}] s  ({t.min()/3600:.2f}, {t.max()/3600:.2f} h)")
+print(f"\n输出变量范围:")
+print(f"  屈服应力 τ₀:  [{tau0.min():.2f}, {tau0.max():.2f}] Pa")
+print(f"  固化度 α:      [{alpha.min():.4f}, {alpha.max():.4f}]")
+print(f"\n数据预览:")
 print(df.head())
 
 # ---------- 5  神经网络 ----------
@@ -67,20 +81,31 @@ y_tensor = torch.from_numpy(y_normalized).to(device)
 np.random.seed(42)
 # 按 y 值排序后分割，确保训练集和验证集的分布相似
 sorted_idx = np.argsort(y_normalized.flatten())
-train_idx = sorted_idx[::5]  # 每5个中取1个作为验证集
-val_idx = sorted_idx[1::5]   # 错开采样
-# 如果数量不够，补充
-if len(train_idx) < int(0.8*len(X_normalized)):
-    remaining = sorted_idx[len(train_idx)+len(val_idx):]
-    train_idx = np.concatenate([train_idx, remaining[:int(0.8*len(X_normalized))-len(train_idx)]])
-if len(val_idx) < int(0.2*len(X_normalized)):
-    remaining = sorted_idx[len(train_idx)+len(val_idx):]
-    val_idx = np.concatenate([val_idx, remaining[:int(0.2*len(X_normalized))-len(val_idx)]])
+# 每5个样本中，前4个给训练集，最后1个给验证集
+train_idx = []
+val_idx = []
+for i in range(0, len(sorted_idx), 5):
+    train_idx.extend(sorted_idx[i:i+4])  # 前4个
+    if i+4 < len(sorted_idx):
+        val_idx.append(sorted_idx[i+4])  # 第5个
+train_idx = np.array(train_idx)
+val_idx = np.array(val_idx)
 
 X_train_tensor = X_tensor[train_idx]
 y_train_tensor = y_tensor[train_idx]
 X_val_tensor = X_tensor[val_idx]
 y_val_tensor = y_tensor[val_idx]
+
+print("\n" + "="*80)
+print("数据预处理完成")
+print("="*80)
+print(f"训练集样本数: {len(train_idx)} ({len(train_idx)/N*100:.1f}%)")
+print(f"验证集样本数: {len(val_idx)} ({len(val_idx)/N*100:.1f}%)")
+print(f"\n标准化参数:")
+print(f"  输入特征均值: {X_mean}")
+print(f"  输入特征标准差: {X_std}")
+print(f"  输出均值: {y_mean:.2f}")
+print(f"  输出标准差: {y_std:.2f}")
 
 net = nn.Sequential(
         nn.Linear(4, 32), nn.ReLU(),
@@ -89,6 +114,16 @@ net = nn.Sequential(
         nn.Dropout(0.4),
         nn.Linear(16, 1)).to(device)
 
+print("\n" + "="*80)
+print("神经网络架构")
+print("="*80)
+print(net)
+total_params = sum(p.numel() for p in net.parameters())
+trainable_params = sum(p.numel() for p in net.parameters() if p.requires_grad)
+print(f"\n总参数量: {total_params}")
+print(f"可训练参数量: {trainable_params}")
+print(f"设备: {device}")
+
 criterion = nn.MSELoss()
 optimizer = torch.optim.Adam(net.parameters(), lr=1e-3, weight_decay=5e-4)
 
@@ -96,6 +131,16 @@ loader = DataLoader(TensorDataset(X_train_tensor, y_train_tensor),
                     batch_size=256, shuffle=True)
 
 # ---------- 6  训练（带 Early Stopping） ----------
+print("\n" + "="*80)
+print("开始训练")
+print("="*80)
+print(f"最大训练轮数: 4000")
+print(f"批次大小: 256")
+print(f"学习率: 1e-3")
+print(f"权重衰减: 5e-4")
+print(f"Early Stopping 耐心值: 50")
+print("="*80)
+
 best_val_loss = float('inf')
 patience = 50
 patience_counter = 0
@@ -144,8 +189,6 @@ ss_res = np.sum((y - y_pred)**2)
 ss_tot = np.sum((y - y_mean)**2)
 r2 = 1 - ss_res / ss_tot
 
-print(f'全样本 R² = {r2:.6f}')
-
 # 分别计算训练集和验证集的 R²
 y_train_pred_normalized = net(X_train_tensor).cpu().detach().numpy()
 y_train_pred = y_train_pred_normalized * y_std + y_mean
@@ -161,5 +204,35 @@ ss_res_val = np.sum((y_val - y_val_pred)**2)
 ss_tot_val = np.sum((y_val - y_mean)**2)
 r2_val = 1 - ss_res_val / ss_tot_val
 
-print(f'训练集 R² = {r2_train:.6f}')
-print(f'验证集 R² = {r2_val:.6f}')
+# 计算 RMSE 和 MAE
+rmse_train = np.sqrt(np.mean((y_train - y_train_pred)**2))
+mae_train = np.mean(np.abs(y_train - y_train_pred))
+rmse_val = np.sqrt(np.mean((y_val - y_val_pred)**2))
+mae_val = np.mean(np.abs(y_val - y_val_pred))
+rmse_all = np.sqrt(np.mean((y - y_pred)**2))
+mae_all = np.mean(np.abs(y - y_pred))
+
+print("\n" + "="*80)
+print("训练完成 - 模型性能评估")
+print("="*80)
+print(f"\n全样本性能:")
+print(f"  R² = {r2:.6f}")
+print(f"  RMSE = {rmse_all:.4f} Pa")
+print(f"  MAE = {mae_all:.4f} Pa")
+print(f"\n训练集性能:")
+print(f"  R² = {r2_train:.6f}")
+print(f"  RMSE = {rmse_train:.4f} Pa")
+print(f"  MAE = {mae_train:.4f} Pa")
+print(f"\n验证集性能:")
+print(f"  R² = {r2_val:.6f}")
+print(f"  RMSE = {rmse_val:.4f} Pa")
+print(f"  MAE = {mae_val:.4f} Pa")
+print(f"\n过拟合检查:")
+print(f"  训练集与验证集 R² 差异: {abs(r2_train - r2_val):.6f}")
+if abs(r2_train - r2_val) < 0.05:
+    print(f"  ✓ 模型泛化良好")
+elif abs(r2_train - r2_val) < 0.1:
+    print(f"  ⚠ 存在轻微过拟合")
+else:
+    print(f"  ✗ 存在明显过拟合")
+print("="*80)
