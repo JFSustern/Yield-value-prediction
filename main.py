@@ -57,8 +57,6 @@ print(f"  静置时间 t:    [{t.min():.1f}, {t.max():.1f}] s  ({t.min()/3600:.2
 print(f"\n输出变量范围:")
 print(f"  屈服应力 τ₀:  [{tau0.min():.2f}, {tau0.max():.2f}] Pa")
 print(f"  固化度 α:      [{alpha.min():.4f}, {alpha.max():.4f}]")
-print(f"\n数据预览:")
-print(df.head())
 
 # ---------- 5  神经网络 ----------
 X = df[['1/T', 'X', 'E', 'logt']].values.astype(np.float32)
@@ -99,13 +97,8 @@ y_val_tensor = y_tensor[val_idx]
 print("\n" + "="*80)
 print("数据预处理完成")
 print("="*80)
-print(f"训练集样本数: {len(train_idx)} ({len(train_idx)/N*100:.1f}%)")
-print(f"验证集样本数: {len(val_idx)} ({len(val_idx)/N*100:.1f}%)")
-print(f"\n标准化参数:")
-print(f"  输入特征均值: {X_mean}")
-print(f"  输入特征标准差: {X_std}")
-print(f"  输出均值: {y_mean:.2f}")
-print(f"  输出标准差: {y_std:.2f}")
+print(f"训练集样本数: {len(train_idx)}")
+print(f"验证集样本数: {len(val_idx)}")
 
 net = nn.Sequential(
         nn.Linear(4, 32), nn.ReLU(),
@@ -120,9 +113,6 @@ print("="*80)
 print(net)
 total_params = sum(p.numel() for p in net.parameters())
 trainable_params = sum(p.numel() for p in net.parameters() if p.requires_grad)
-print(f"\n总参数量: {total_params}")
-print(f"可训练参数量: {trainable_params}")
-print(f"设备: {device}")
 
 criterion = nn.MSELoss()
 optimizer = torch.optim.Adam(net.parameters(), lr=1e-3, weight_decay=5e-4)
@@ -138,7 +128,7 @@ print(f"最大训练轮数: 4000")
 print(f"批次大小: 256")
 print(f"学习率: 1e-3")
 print(f"权重衰减: 5e-4")
-print(f"Early Stopping 耐心值: 50")
+print(f"Early Stopping 轮数: 50")
 print("="*80)
 
 best_val_loss = float('inf')
@@ -235,4 +225,3 @@ elif abs(r2_train - r2_val) < 0.1:
     print(f"  ⚠ 存在轻微过拟合")
 else:
     print(f"  ✗ 存在明显过拟合")
-print("="*80)
