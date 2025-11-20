@@ -22,19 +22,25 @@ t  = np.random.uniform(0, 3*3600, N)              # s  静置时间
 
 # ---------- 3  机理生成函数 ----------
 def tau0_mechanism(T, Phi, E, t):
-    # 3.1 KD 有效堆积 → 网络密度
-    Phi_eff = Phi_m * (1 - np.exp(-E/400))          # 混合越好 → 有效 Φ_m 越高
-    X = Phi / Phi_eff
-    # 修复：避免分母为 0，使用更稳定的公式 原来是network = (X/(1-X))**2
-    network = np.clip(X, 0, 0.99)**2 / (1 - np.clip(X, 0, 0.99))**2  # 颗粒网络强度
+    # 3.1 有效最大堆积（混合功）
+    Phi_eff = Phi_m * (1 - np.exp(-E / 400))  # 同原逻辑
+    X = np.clip(Phi / Phi_eff, 1e-3, 0.99)  # 防边界
+
+    # 3.1.1 严格 KD 相对粘度（无量纲）
+    eta = 2.5  # 球形颗粒本征粘度
+    eta_r = (1 - X) ** (-eta * Phi_m)  # KD 核心式
+
+    # 3.1.2 屈服应力 ∝ (η_r - 1)^p   （文献幂律标度）
+    p = 0.8  # 幂次可先验 0.6-1.0
+    C = 30.0  # Pa  经验标尺（可调）
+    tau0_base = C * (eta_r - 1) ** p  # 单位：Pa
 
     # 3.2 Arrhenius 固化增强
-    k = A * np.exp(-Ea/(R*T))
-    alpha = 1 - np.exp(-k*t)                        # 固化度 α∈[0,1)
-    chem_boost = 1 + 5*alpha                        # 交联使 τ₀ 增强
+    k = A * np.exp(-Ea / (R * T))
+    alpha = 1 - np.exp(-k * t)
+    chem_boost = 1 + 5 * alpha  # 化学交联倍数
 
-    # 3.3 基准尺度
-    tau0_base = 50 * network                          # Pa
+    # 3.3 最终屈服应力
     tau0 = tau0_base * chem_boost
     return tau0, alpha
 
