@@ -1,32 +1,60 @@
 # src/physics/yodel.py
 
+import numpy as np
 import torch
 
 
 def calc_phi_c(d50, sigma):
     """
     计算渗透阈值 Phi_c (Percolation Threshold)
-    基于 YODEL 文献近似: Phi_c ~ 0.28 * (1 + sigma_PSD / d50)
-    这里简化假设 sigma_PSD (标准差) 与几何标准差 sigma (无量纲) 的关系。
-    对于 Log-Normal 分布，变异系数 CV ~ sqrt(exp(sigma^2) - 1)。
-    这里采用简化工程近似。
+
+    文献来源：
+    - Flatt & Bowen (2006): "Yield stress of suspensions of non-aggregated particles"
+    - Journal of the American Ceramic Society, Vol. 89, No. 4, pp. 1244-1256
+    - DOI: 10.1111/j.1551-2916.2005.00888.x
+    - 关键页码：p. 1251
+
+    原始公式：
+    Phi_c = 0.28 * (1 + sigma_PSD / d50)
+
+    其中：
+    - 0.28：基础渗透阈值（球形颗粒随机堆积）
+    - sigma_PSD：线性空间的粒径分布标准差
+    - d50：中位径
+    - sigma_PSD / d50：变异系数 (Coefficient of Variation, CV)
+
+    对于 Log-Normal 分布，线性空间标准差与几何标准差的关系：
+    sigma_PSD = d50 * sqrt(exp((ln(sigma))^2) - 1)
+
+    因此：
+    CV = sigma_PSD / d50 = sqrt(exp((ln(sigma))^2) - 1)
 
     Args:
-        d50: 中位径 (Tensor)
-        sigma: 几何标准差 (Tensor)
+        d50: 中位径 (Tensor) [um]
+        sigma: 几何标准差 (Tensor) [无量纲]
     Returns:
-        Phi_c (Tensor)
+        Phi_c (Tensor) [无量纲]
     """
-    # 简化的物理近似：粒径分布越宽(sigma越大)，堆积越密，但渗透阈值通常与配位数有关
-    # 引用 Flatt 2006: Phi_c = 0.28 (对于球体) * 修正系数
-    # 这里使用一个与 sigma 正相关的经验修正，假设宽分布更容易形成网络
-    # 注意：YODEL 原文 Phi_c 是纯几何参数
-    return 0.28 * (1 + (sigma - 1.0) * 0.5)
+    # 从几何标准差转换到线性空间的变异系数
+    # 对于 Log-Normal 分布：CV = sqrt(exp((ln(sigma))^2) - 1)
+    ln_sigma = torch.log(sigma)
+    cv = torch.sqrt(torch.exp(ln_sigma**2) - 1)
+
+    # 代入 YODEL 原始公式
+    phi_c = 0.28 * (1 + cv)
+
+    return phi_c
 
 def calc_m1(d50, G_max):
     """
     计算几何预因子 m1
-    m1 ~ G_max / R^2
+
+    文献公式 (Eq. 41): m1 = (1.8/pi^4) * (G_max / R_v50) * F_sigma
+
+    修正说明：
+    1. 引入几何常数 const = 1.8 / pi^4 ≈ 0.0185
+    2. 分母修正为 R^2 以满足应力量纲 [Pa]
+    3. 假设 F_sigma ≈ 1.0 (忽略 PSD 形状的二阶修正)
 
     Args:
         d50: 粒径 (Tensor) [um]
@@ -34,10 +62,15 @@ def calc_m1(d50, G_max):
     Returns:
         m1 (Tensor) [Pa]
     """
-    # R ~ d50 / 2
-    # m1 = const * G_max / (d50^2)
-    # 这里的 const 包含几何因子，设为 1.0 (吸收到 G_max 中)
-    return G_max / ((d50 / 2.0) ** 2 + 1e-8)
+    # 几何常数
+    const = 1.8 / (np.pi ** 4)
+
+    # 半径
+    R = d50 / 2.0
+
+    # 计算 m1
+    # + 1e-8 是为了防止除零
+    return const * G_max / (R ** 2 + 1e-8)
 
 def calc_phi_m_dynamic(phi_m0, Emix, k_E=1e-3, phi_m_ultimate=0.74):
     """

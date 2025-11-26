@@ -60,7 +60,8 @@ class SyntheticDataGenerator:
         # G_max = G0 * exp(Ea/RT)
         # 简化：G_max 随温度升高而降低 (假设热运动破坏结构) 或升高 (固化)
         # 这里假设固化主导：温度高 -> 固化快 -> G_max 大
-        g_max_base = 100.0 # 基础值
+        # 由于 calc_m1 引入了 1.8/pi^4 (~0.0185) 的常数，这里 G_max 需要相应放大
+        g_max_base = 5000.0 # 基础值 (原 100.0 / 0.0185 ≈ 5400)
         g_max = g_max_base * (1 + 0.05 * (t_temp - 25.0)) # 简单线性假设用于生成数据
 
         # m1
