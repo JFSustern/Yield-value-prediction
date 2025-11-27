@@ -91,7 +91,7 @@ class SyntheticDataGenerator:
         df = pd.DataFrame(data)
 
         # 过滤无效数据 (Tau0 = 0 或 NaN)
-        df = df[df['Tau0'] > 1e-3].dropna()
+        df = df[df['Tau0(屈服应力_Pa)'] > 1e-3].dropna()
 
         if save_path:
             os.makedirs(os.path.dirname(save_path), exist_ok=True)
