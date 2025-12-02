@@ -3,7 +3,7 @@
 import torch
 import torch.nn as nn
 
-from src.physics.yodel import yodel_mechanism
+from src.physics.yodel import yodel_mechanism, calc_m1, calc_phi_c
 
 
 class YodelPINN(nn.Module):
@@ -18,21 +18,21 @@ class YodelPINN(nn.Module):
         super().__init__()
 
         # 1. 神经网络部分 (Parameter Estimator)
-        # 任务：从输入预测难以测量的中间物理参数 (Phi_m_eff, m1_eff)
-        # 注意：虽然 m1 可以由 d50 算出来，但这里让网络学习综合效应
+        # 任务：从输入预测难以测量的中间物理参数 (Phi_m_eff, G_max_factor)
+        # 注意：不再直接预测 m1，而是预测 G_max 的修正系数
         self.net = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
-            nn.Tanh(), # Tanh 通常比 ReLU 更适合物理回归 (平滑)
-            nn.Linear(hidden_dim, hidden_dim),
             nn.Tanh(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.Tanh(),
-            nn.Linear(hidden_dim, 2) # 输出: [Phi_m_pred, m1_pred]
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.Tanh(),
+            nn.Linear(hidden_dim, 2) # 输出: [Phi_m_pred, G_max_factor]
         )
 
-        # 物理参数的缩放因子 (用于归一化输出)
-        self.register_buffer('phi_m_scale', torch.tensor(1.0))
-        self.register_buffer('m1_scale', torch.tensor(1000.0)) # m1 通常在 Pa 量级
+        # G_max 的基准值 (与 generator.py 保持一致)
+        # 对应真实物理力 ~80 nN
+        self.register_buffer('g_max_base', torch.tensor(80000.0))
 
     def forward(self, x):
         """
@@ -56,33 +56,40 @@ class YodelPINN(nn.Module):
         phi = x[:, 0]
         d50 = x[:, 1]
         sigma = x[:, 2]
-
-        # 激活函数确保物理意义
-        # Phi_m 必须在 (Phi, 1.0) 之间 -> Sigmoid + 缩放
-        # m1 必须 > 0 -> Softplus
+        # emix = x[:, 3] # 暂时没用到，因为 Phi_m 由网络直接预测了综合效应
+        # temp = x[:, 4] # 暂时没用到，因为 G_max 由网络预测了综合效应
 
         raw_phi_m = out[:, 0]
-        raw_m1 = out[:, 1]
+        raw_g_max = out[:, 1]
 
-        # 物理约束：Phi_m 必须大于当前的 Phi
-        # Phi_m_pred = Phi + Softplus(raw) + epsilon
-        phi_m_pred = phi + torch.nn.functional.softplus(raw_phi_m) + 1e-3
-        # 同时也应该小于 0.74 (FCC) 或 1.0
-        phi_m_pred = torch.clamp(phi_m_pred, max=0.99)
+        # 2. 物理参数解码
 
-        m1_pred = torch.nn.functional.softplus(raw_m1) * self.m1_scale
+        # Phi_m: 必须大于当前的 Phi
+        # 使用 Sigmoid + 缩放，限制在 [Phi, 0.74] 之间
+        # 改进：Phi_m = Phi + Sigmoid(raw) * (0.74 - Phi)
+        # 这样保证了 Phi < Phi_m < 0.74 (FCC极限)
+        # 避免了之前的 clamp 导致的梯度消失
+        max_packing = 0.74
+        phi_m_pred = phi + torch.sigmoid(raw_phi_m) * (max_packing - phi)
 
-        # 2. 物理层 (Differentiable Physics Layer)
+        # G_max: 必须 > 0
+        # 网络预测的是相对于基准值 80000 的修正系数
+        # 使用 Softplus 保证正数，且初始值接近 1.0 (Softplus(0.55) ~ 1.0)
+        g_max_pred = torch.nn.functional.softplus(raw_g_max) * self.g_max_base
+
+        # 3. 物理层 (Differentiable Physics Layer)
+
+        # 计算 m1 (使用物理公式!)
+        m1_pred = calc_m1(d50, g_max_pred)
+
         # 计算 Phi_c (确定性几何关系)
-        # 注意：这里需要引入 yodel.py 中的 calc_phi_c
-        # 为了保持梯度，直接在这里实现或调用
-        # Phi_c ~ 0.28 * (1 + (sigma - 1)*0.5)
-        phi_c = 0.28 * (1 + (sigma - 1.0) * 0.5)
+        # Phi_c ~ 0.28 * (1 + CV)
+        phi_c = calc_phi_c(d50, sigma)
 
         # 调用 YODEL 主方程
         tau0_pred = yodel_mechanism(phi, phi_m_pred, phi_c, m1_pred)
 
-        return tau0_pred, (phi_m_pred, m1_pred)
+        return tau0_pred, (phi_m_pred, m1_pred, g_max_pred)
 
 if __name__ == "__main__":
     # 测试模型前向传播
@@ -92,5 +99,5 @@ if __name__ == "__main__":
     tau0, params = model(x)
     print(f"Input: {x}")
     print(f"Predicted Tau0: {tau0.item():.2f} Pa")
-    print(f"Predicted Params: Phi_m={params[0].item():.4f}, m1={params[1].item():.2f}")
+    print(f"Predicted Params: Phi_m={params[0].item():.4f}, m1={params[1].item():.2f}, G_max={params[2].item():.2f}")
 

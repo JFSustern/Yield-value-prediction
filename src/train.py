@@ -57,7 +57,7 @@ def train():
             optimizer.zero_grad()
 
             # Forward
-            pred_tau0, (pred_phi_m, pred_m1) = model(batch_X)
+            pred_tau0, (pred_phi_m, pred_m1, pred_g_max) = model(batch_X)
 
             # 确保维度匹配 [batch, 1]
             if pred_tau0.dim() == 1:
@@ -99,7 +99,7 @@ def train():
         print("\nValidation Samples:")
         for i in range(5):
             print(f"True: {sample_y[i].item():.2f}, Pred: {pred[i].item():.2f}, "
-                  f"Phi_m: {params[0][i].item():.3f}")
+                  f"Phi_m: {params[0][i].item():.3f}, G_max: {params[2][i].item():.0f}")
 
 if __name__ == "__main__":
     train()
