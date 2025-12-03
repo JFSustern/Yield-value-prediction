@@ -51,11 +51,6 @@ def calc_m1(d50, G_max):
 
     文献公式 (Eq. 41): m1 = (1.8/pi^4) * (G_max / R_v50) * F_sigma
 
-    修正说明：
-    1. 引入几何常数 const = 1.8 / pi^4 ≈ 0.0185
-    2. 分母修正为 R^2 以满足应力量纲 [Pa]
-    3. 假设 F_sigma ≈ 1.0 (忽略 PSD 形状的二阶修正)
-
     Args:
         d50: 粒径 (Tensor) [um]
         G_max: 颗粒间最大作用力 (Tensor) [Force]
@@ -72,7 +67,7 @@ def calc_m1(d50, G_max):
     # + 1e-8 是为了防止除零
     return const * G_max / (R ** 2 + 1e-8)
 
-def calc_phi_m_dynamic(phi_m0, Emix, k_E=1e-3, phi_m_ultimate=0.74):
+def calc_phi_m_dynamic(phi_m0, Emix, k_E=1e-8, phi_m_ultimate=0.74):
     """
     动力学修正：混合功改善最大堆积密度
     Phi_m = Phi_m0 + Delta * (1 - exp(-k * E))
@@ -80,7 +75,9 @@ def calc_phi_m_dynamic(phi_m0, Emix, k_E=1e-3, phi_m_ultimate=0.74):
     Args:
         phi_m0: 初始最大堆积 (Tensor)
         Emix: 混合功 (Tensor) [J]
-        k_E: 速率常数
+        k_E: 速率常数 [1/J]。
+             对于高能混合过程 (E ~ 10^8 J)，k_E 应在 1e-8 量级，
+             以体现渐进的结构演化。
         phi_m_ultimate: 极限堆积 (FCC ~ 0.74)
     Returns:
         Phi_m_eff (Tensor)
