@@ -15,7 +15,11 @@ from src.model.pinn import YodelPINN
 def train():
     # 1. 数据准备
     print("Step 1: Loading Training Data...")
-    data_path = "data/synthetic/dataset.csv"
+    data_path = "data/synthetic/train_data.csv" # 修改为读取训练集
+
+    if not os.path.exists(data_path):
+        # 如果没有拆分好的训练集，尝试读取完整数据集
+        data_path = "data/synthetic/dataset.csv"
 
     if not os.path.exists(data_path):
         print(f"Error: Training data not found at {data_path}")
@@ -41,7 +45,19 @@ def train():
 
     # 2. 模型初始化
     print("Step 2: Initializing Model...")
-    model = YodelPINN()
+
+    # 设备选择: MPS (Mac) > CUDA (NVIDIA) > CPU
+    if torch.backends.mps.is_available():
+        device = torch.device("mps")
+        print("Using device: MPS (Apple Silicon)")
+    elif torch.cuda.is_available():
+        device = torch.device("cuda")
+        print("Using device: CUDA")
+    else:
+        device = torch.device("cpu")
+        print("Using device: CPU")
+
+    model = YodelPINN().to(device)
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
     criterion = nn.MSELoss()
 
@@ -53,11 +69,24 @@ def train():
     model.train()
     for epoch in range(epochs):
         epoch_loss = 0
+
+        # 监控物理参数的统计值
+        phi_m_stats = []
+        g_max_stats = []
+
         for batch_X, batch_y in loader:
+            # 移动数据到设备
+            batch_X = batch_X.to(device)
+            batch_y = batch_y.to(device)
+
             optimizer.zero_grad()
 
             # Forward
             pred_tau0, (pred_phi_m, pred_m1, pred_g_max) = model(batch_X)
+
+            # 收集统计信息 (detach并转为numpy)
+            phi_m_stats.extend(pred_phi_m.detach().cpu().numpy().flatten())
+            g_max_stats.extend(pred_g_max.detach().cpu().numpy().flatten())
 
             # 确保维度匹配 [batch, 1]
             if pred_tau0.dim() == 1:
@@ -80,8 +109,13 @@ def train():
         avg_loss = epoch_loss / len(loader)
         loss_history.append(avg_loss)
 
-        if (epoch + 1) % 10 == 0:
-            print(f"Epoch {epoch+1}/{epochs}, Loss: {avg_loss:.4f}")
+        # 计算物理参数的统计特征
+        phi_m_mean = np.mean(phi_m_stats)
+        g_max_mean = np.mean(g_max_stats)
+
+        if (epoch + 1) % 5 == 0: # 每5轮打印一次
+            print(f"Epoch {epoch+1}/{epochs} | Loss: {avg_loss:.4f} | "
+                  f"Phi_m: {phi_m_mean:.3f} | G_max: {g_max_mean:.0f}")
 
     # 4. 保存模型
     os.makedirs("models", exist_ok=True)

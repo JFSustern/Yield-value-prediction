@@ -96,8 +96,28 @@ class SyntheticDataGenerator:
 
         if save_path:
             os.makedirs(os.path.dirname(save_path), exist_ok=True)
+
+            # 随机打乱
+            df = df.sample(frac=1, random_state=42).reset_index(drop=True)
+
+            # 划分训练集和测试集 (8:2)
+            n_train = int(len(df) * 0.8)
+            train_df = df.iloc[:n_train]
+            test_df = df.iloc[n_train:]
+
+            # 保存
+            train_path = os.path.join(os.path.dirname(save_path), "train_data.csv")
+            test_path = os.path.join(os.path.dirname(save_path), "test_data.csv")
+
+            train_df.to_csv(train_path, index=False)
+            test_df.to_csv(test_path, index=False)
+
+            # 为了兼容旧代码，也保存一份完整的
             df.to_csv(save_path, index=False)
-            print(f"Saved {len(df)} samples to {save_path}")
+
+            print(f"Generated {len(df)} samples.")
+            print(f"Saved Train: {len(train_df)} samples -> {train_path}")
+            print(f"Saved Test:  {len(test_df)} samples -> {test_path}")
 
         return df
 

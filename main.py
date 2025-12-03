@@ -7,6 +7,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from src.train import train
+from src.test import test
 from src.data.loader import load_excel_data
 from src.data.generator import SyntheticDataGenerator
 
@@ -18,6 +19,9 @@ def main():
     # Command: train
     train_parser = subparsers.add_parser("train", help="Train the PINN model")
 
+    # Command: test
+    test_parser = subparsers.add_parser("test", help="Evaluate the model on test set")
+
     # Command: generate_data
     gen_parser = subparsers.add_parser("generate", help="Generate synthetic dataset")
     gen_parser.add_argument("--samples", type=int, default=20, help="Samples per real condition")
@@ -27,6 +31,10 @@ def main():
     if args.command == "train":
         print("Starting training pipeline...")
         train()
+
+    elif args.command == "test":
+        print("Starting evaluation...")
+        test()
 
     elif args.command == "generate":
         print("Generating synthetic data...")
