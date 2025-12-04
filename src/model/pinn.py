@@ -46,7 +46,7 @@ class YodelPINN(nn.Module):
         # 1. 输入预处理 (归一化) 给 NN
         # 粗略统计特征: Phi~0.7, d50~30, sigma~1.5, Emix~1e6, Temp~50
         # Scale: [1, 0.03, 0.6, 1e-6, 0.02]
-        scale = torch.tensor([1.0, 0.03, 0.6, 1e-6, 0.02], device=x.device)
+        scale = torch.tensor([1.0, 0.03, 0.6, 2.0e-9, 0.02], device=x.device)
         x_norm = x * scale
 
         # NN 预测

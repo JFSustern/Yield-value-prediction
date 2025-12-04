@@ -64,7 +64,7 @@ def train():
 
     # 3. 训练循环
     print("Step 3: Starting Training...")
-    epochs = 200
+    epochs = 100
 
     # 记录历史数据
     history = {
@@ -99,8 +99,9 @@ def train():
             if pred_tau0.dim() == 1:
                 pred_tau0 = pred_tau0.unsqueeze(1)
 
-            # Loss 1: 预测误差
-            loss_mse = criterion(pred_tau0, batch_y)
+            # Loss 1: 预测误差 (Scaled MSE to prevent gradient explosion)
+            # Tau0 range is 0-5000, so we scale by 100.0 to keep loss in reasonable range
+            loss_mse = criterion(pred_tau0 / 100.0, batch_y / 100.0)
 
             # Loss 2: 物理约束 (可选)
             loss_reg = torch.mean(torch.relu(pred_phi_m - 0.74)) * 10.0
@@ -108,6 +109,8 @@ def train():
             loss = loss_mse + loss_reg
 
             loss.backward()
+            # Gradient Clipping
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
 
             epoch_loss += loss.item()
