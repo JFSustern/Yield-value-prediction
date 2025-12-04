@@ -35,6 +35,7 @@ class SyntheticDataGenerator:
         n_total = len(df_expanded)
 
         emix = df_expanded['Emix'].values
+        # 严格使用真实温度，不引入人为扰动
         temp = df_expanded['Temp_end'].values
 
         # 2. 随机生成缺失的物性参数
@@ -53,19 +54,15 @@ class SyntheticDataGenerator:
         t_temp = torch.tensor(temp, dtype=torch.float32)
 
         # 4. 计算中间物理量
-        # Phi_c
+        # Phi_c (Log-Normal corrected)
         phi_c = calc_phi_c(t_d50, t_sigma)
 
         # G_max (Temp dependent)
-        # G_max = G0 * exp(Ea/RT)
-        # 简化：G_max 随温度升高而降低 (假设热运动破坏结构) 或升高 (固化)
-        # 这里假设固化主导：温度高 -> 固化快 -> G_max 大
-        # 由于 calc_m1 引入了 1.8/pi^4 (~0.0185) 的常数，且 R 使用微米单位
         # g_max_base = 80000.0 对应真实物理力约 80 nN (纳牛)，符合范德华力/液桥力范围
         g_max_base = 80000.0
-        g_max = g_max_base * (1 + 0.05 * (t_temp - 25.0)) # 简单线性假设用于生成数据
+        g_max = g_max_base * (1 + 0.05 * (t_temp - 25.0))
 
-        # m1
+        # m1 (Restored geometric constant)
         m1 = calc_m1(t_d50, g_max)
 
         # Phi_m (Dynamic)
@@ -91,8 +88,20 @@ class SyntheticDataGenerator:
 
         df = pd.DataFrame(data)
 
-        # 过滤无效数据 (Tau0 = 0 或 NaN)
-        df = df[df['Tau0(屈服应力_Pa)'] > 1e-3].dropna()
+        # 7. 物理约束过滤 (关键步骤)
+        initial_len = len(df)
+
+        # 过滤 Phi >= Phi_m (防止堵塞/负值)
+        df = df[df['Phi(固含量)'] < df['Phi_m_true(最大堆积)']]
+
+        # 过滤 Phi <= Phi_c_true (防止无屈服/分母为0)
+        df = df[df['Phi(固含量)'] > df['Phi_c_true(渗透阈值)']]
+
+        # 过滤 Tau0 异常值 (例如 > 5000 Pa 或 < 0)
+        df = df[(df['Tau0(屈服应力_Pa)'] > 0) & (df['Tau0(屈服应力_Pa)'] < 5000)]
+
+        final_len = len(df)
+        print(f"Filtered {initial_len - final_len} physically invalid samples.")
 
         if save_path:
             os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -131,5 +140,5 @@ if __name__ == "__main__":
 
     # 2. 基于真实工况生成合成数据
     gen = SyntheticDataGenerator(real_df)
-    gen.generate(n_samples_per_real=50) # 每个真实工况生成 50 种虚拟配方
+    gen.generate(n_samples_per_real=50)
 

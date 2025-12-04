@@ -106,16 +106,16 @@ def yodel_mechanism(phi, phi_m, phi_c, m1):
     # 物理约束 1: Phi < Phi_m (否则堵塞/无穷大)
     # 物理约束 2: Phi > Phi_c (否则无屈服值/流体)
 
-    # 分子: Phi_m * (Phi_m - Phi)
-    numerator = phi_m * (phi_m - phi)
-    numerator = torch.relu(numerator) # 确保非负
-
-    # 分母: Phi * (Phi - Phi_c)^2
-    # 软约束：如果 Phi < Phi_c，分母不应为0，且 tau0 应为 0
+    # 分子: Phi * (Phi - Phi_c)^2
     diff_c = phi - phi_c
-    diff_c = torch.relu(diff_c) + epsilon # 确保分母非零且正
+    diff_c = torch.relu(diff_c) # 确保非负，如果 phi < phi_c，则为0
+    numerator = phi * (diff_c ** 2)
 
-    denominator = phi * (diff_c ** 2)
+    # 分母: Phi_m * (Phi_m - Phi)
+    # 软约束：如果 Phi -> Phi_m，分母 -> 0，tau0 -> inf
+    diff_m = phi_m - phi
+    diff_m = torch.relu(diff_m) + epsilon # 确保分母非零且正
+    denominator = phi_m * diff_m
 
     tau0 = m1 * numerator / denominator
 

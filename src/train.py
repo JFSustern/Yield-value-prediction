@@ -64,7 +64,7 @@ def train():
 
     # 3. 训练循环
     print("Step 3: Starting Training...")
-    epochs = 50
+    epochs = 200
 
     # 记录历史数据
     history = {
