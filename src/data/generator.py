@@ -1,4 +1,3 @@
-# src/data/generator.py
 
 import os
 
@@ -19,109 +18,130 @@ class SyntheticDataGenerator:
 
     def generate(self, n_samples_per_real=10, save_path="data/synthetic/dataset.csv"):
         """
-        生成合成数据集
-        策略：遍历真实数据的每一行 (Emix, Temp)，为其生成 n_samples_per_real 组随机的 (Phi, PSD)
-        这样保证工况分布与真实数据完全一致。
+        生成合成数据集 (双阶段：Peak -> Final)
 
-        Args:
-            n_samples_per_real: 每个真实样本生成的虚拟配方数量
+        物理过程：
+        1. Peak阶段 (加氧化剂后)：液体较少(无固化剂)，固含量高 -> 高屈服值
+        2. Final阶段 (加固化剂后)：液体增加，固含量降低 -> 低屈服值
         """
         if self.real_data is None or self.real_data.empty:
             raise ValueError("Real data is required to generate synthetic dataset based on actual process conditions.")
 
         # 1. 扩展真实数据
-        # 重复真实数据行
         df_expanded = self.real_data.loc[self.real_data.index.repeat(n_samples_per_real)].reset_index(drop=True)
         n_total = len(df_expanded)
 
         emix = df_expanded['Emix'].values
-        # 严格使用真实温度，不引入人为扰动
         temp = df_expanded['Temp_end'].values
 
-        # 2. 随机生成缺失的物性参数
-        # Phi: 固含量 [0.60, 0.75]
-        phi = np.random.uniform(0.60, 0.75, n_total)
+        # 2. 随机生成配方参数
+        # Phi_final: 最终固含量 [0.60, 0.75]
+        phi_final = np.random.uniform(0.60, 0.75, n_total)
 
         # PSD: d50 [5, 50] um, sigma [1.2, 2.0]
         d50 = np.random.uniform(5.0, 50.0, n_total)
         sigma = np.random.uniform(1.2, 2.0, n_total)
 
-        # 3. 转为 Tensor 进行机理计算 (Ground Truth Generation)
-        t_phi = torch.tensor(phi, dtype=torch.float32)
+        # Curing Agent Ratio: 固化剂在液相中的体积占比 [0.10, 0.25]
+        # 这决定了从 Peak 到 Final 的稀释程度
+        ratio_curing = np.random.uniform(0.10, 0.25, n_total)
+
+        # 3. 转为 Tensor 进行机理计算
+        t_phi_final = torch.tensor(phi_final, dtype=torch.float32)
         t_d50 = torch.tensor(d50, dtype=torch.float32)
         t_sigma = torch.tensor(sigma, dtype=torch.float32)
         t_emix = torch.tensor(emix, dtype=torch.float32)
         t_temp = torch.tensor(temp, dtype=torch.float32)
+        t_ratio = torch.tensor(ratio_curing, dtype=torch.float32)
 
         # 4. 计算中间物理量
-        # Phi_c (Log-Normal corrected)
+        # Phi_c
         phi_c = calc_phi_c(t_d50, t_sigma)
 
         # G_max (Temp dependent)
-        # g_max_base = 80000.0 对应真实物理力约 80 nN (纳牛)，符合范德华力/液桥力范围
         g_max_base = 80000.0
         g_max = g_max_base * (1 + 0.05 * (t_temp - 25.0))
 
-        # m1 (Restored geometric constant)
+        # m1
         m1 = calc_m1(t_d50, g_max)
 
         # Phi_m (Dynamic)
-        # 基础 Phi_m 与 PSD 有关 (宽分布堆积更密)
         phi_m0 = 0.65 + 0.1 * (t_sigma - 1.2)
         phi_m = calc_phi_m_dynamic(phi_m0, t_emix)
 
-        # 5. 计算 Label (Tau0)
-        tau0 = yodel_mechanism(t_phi, phi_m, phi_c, m1)
+        # 5. 计算两个阶段的固含量
+        # Final 阶段: t_phi_final
 
-        # 6. 组装 DataFrame
+        # Peak 阶段: 移除固化剂后的固含量
+        # V_total = V_solid + V_liquid_total
+        # V_liquid_total = V_liquid_other + V_curing
+        # ratio = V_curing / V_liquid_total
+        # Phi_final = V_solid / (V_solid + V_liquid_total)
+        # Phi_peak = V_solid / (V_solid + V_liquid_other)
+        #          = V_solid / (V_solid + V_liquid_total * (1 - ratio))
+        #          = Phi_final / (Phi_final + (1-ratio)*(1-Phi_final))
+
+        # 推导:
+        # V_solid = Phi_final * V_total
+        # V_liquid_total = (1 - Phi_final) * V_total
+        # V_liquid_other = (1 - ratio) * V_liquid_total
+        # V_peak_total = V_solid + V_liquid_other
+        # Phi_peak = V_solid / V_peak_total
+
+        v_solid = t_phi_final
+        v_liquid_total = 1.0 - t_phi_final
+        v_liquid_other = v_liquid_total * (1.0 - t_ratio)
+        t_phi_peak = v_solid / (v_solid + v_liquid_other)
+
+        # 6. 计算 Label (Tau0)
+        tau0_final = yodel_mechanism(t_phi_final, phi_m, phi_c, m1)
+        tau0_peak = yodel_mechanism(t_phi_peak, phi_m, phi_c, m1)
+
+        # 7. 组装 DataFrame
         data = {
-            'Phi(固含量)': phi,
+            'Phi_final(固含量)': phi_final,
             'd50(中位径_um)': d50,
             'sigma(几何标准差)': sigma,
             'Emix(混合功_J)': emix,
             'Temp(温度_C)': temp,
-            'Phi_c_true(渗透阈值)': phi_c.numpy(),
+            'Curing_Ratio(固化剂比例)': ratio_curing,
+            'Phi_peak(高峰固含量)': t_phi_peak.numpy(),
             'Phi_m_true(最大堆积)': phi_m.numpy(),
-            'm1_true(强度因子_Pa)': m1.numpy(),
-            'Tau0(屈服应力_Pa)': tau0.numpy()
+            'Tau0_peak(高峰屈服_Pa)': tau0_peak.numpy(),
+            'Tau0_final(最终屈服_Pa)': tau0_final.numpy()
         }
 
         df = pd.DataFrame(data)
 
-        # 7. 物理约束过滤 (关键步骤)
+        # 8. 物理约束过滤
         initial_len = len(df)
 
-        # 过滤 Phi >= Phi_m (防止堵塞/负值)
-        df = df[df['Phi(固含量)'] < df['Phi_m_true(最大堆积)']]
+        # 过滤 Phi < Phi_m
+        df = df[df['Phi_peak(高峰固含量)'] < df['Phi_m_true(最大堆积)']]
 
-        # 过滤 Phi <= Phi_c_true (防止无屈服/分母为0)
-        df = df[df['Phi(固含量)'] > df['Phi_c_true(渗透阈值)']]
+        # 过滤 Phi > Phi_c
+        df = df[df['Phi_final(固含量)'] > 0.2] # 简单过滤，具体由Yodel内部处理
 
-        # 过滤 Tau0 异常值 (例如 > 5000 Pa 或 < 0)
-        df = df[(df['Tau0(屈服应力_Pa)'] > 0) & (df['Tau0(屈服应力_Pa)'] < 5000)]
+        # 过滤 Tau0 有效性
+        df = df[(df['Tau0_final(最终屈服_Pa)'] > 0) & (df['Tau0_final(最终屈服_Pa)'] < 10000)]
+        df = df[(df['Tau0_peak(高峰屈服_Pa)'] > 0) & (df['Tau0_peak(高峰屈服_Pa)'] < 20000)]
 
         final_len = len(df)
         print(f"Filtered {initial_len - final_len} physically invalid samples.")
 
         if save_path:
             os.makedirs(os.path.dirname(save_path), exist_ok=True)
-
-            # 随机打乱
             df = df.sample(frac=1, random_state=42).reset_index(drop=True)
 
-            # 划分训练集和测试集 (8:2)
             n_train = int(len(df) * 0.8)
             train_df = df.iloc[:n_train]
             test_df = df.iloc[n_train:]
 
-            # 保存
             train_path = os.path.join(os.path.dirname(save_path), "train_data.csv")
             test_path = os.path.join(os.path.dirname(save_path), "test_data.csv")
 
             train_df.to_csv(train_path, index=False)
             test_df.to_csv(test_path, index=False)
-
-            # 为了兼容旧代码，也保存一份完整的
             df.to_csv(save_path, index=False)
 
             print(f"Generated {len(df)} samples.")
@@ -132,13 +152,10 @@ class SyntheticDataGenerator:
 
 if __name__ == "__main__":
     from src.data.loader import load_excel_data
-
-    # 1. 加载真实数据
     print("Loading real data...")
     real_df = load_excel_data()
     print(f"Loaded {len(real_df)} real process samples.")
 
-    # 2. 基于真实工况生成合成数据
     gen = SyntheticDataGenerator(real_df)
     gen.generate(n_samples_per_real=50)
 
