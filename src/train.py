@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
-import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader
 
@@ -62,17 +61,18 @@ def train():
 
     model = YodelPINN(input_dim=6).to(device)
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
-    criterion = nn.MSELoss()
+    # criterion = nn.MSELoss() # 弃用普通 MSE
 
     # 3. 训练循环
     print("Step 3: Starting Training...")
-    epochs = 100
+    epochs = 300
 
     history = {
         'loss': [],
         'loss_peak': [],
         'loss_final': [],
         'phi_m': [],
+        'phi_peak': [],
         'g_max': []
     }
 
@@ -83,6 +83,7 @@ def train():
         epoch_loss_final = 0
 
         phi_m_stats = []
+        phi_peak_stats = []
         g_max_stats = []
 
         for batch_X, batch_y in loader:
@@ -92,27 +93,33 @@ def train():
             optimizer.zero_grad()
 
             # Forward -> [batch, 2]
-            pred_tau0, (pred_phi_m, pred_m1, pred_g_max, pred_phi_peak) = model(batch_X)
+            pred_tau0, params = model(batch_X)
+
+            pred_phi_m = params[0]
+            pred_g_max = params[2]
+            pred_phi_peak = params[3]
 
             phi_m_stats.extend(pred_phi_m.detach().cpu().numpy().flatten())
+            phi_peak_stats.extend(pred_phi_peak.detach().cpu().numpy().flatten())
             g_max_stats.extend(pred_g_max.detach().cpu().numpy().flatten())
 
-            # Loss Calculation
-            # Scale targets to keep loss in reasonable range (e.g. / 100.0)
-            # Peak values are larger (~2000), Final (~500)
+            # Loss Calculation: Log-MSE
+            # 使用 log(1+x) 来处理跨数量级数据，同时避免 log(0)
+            # 这样 10->100 的误差 和 1000->10000 的误差权重相当
 
             pred_peak = pred_tau0[:, 0]
             pred_final = pred_tau0[:, 1]
             true_peak = batch_y[:, 0]
             true_final = batch_y[:, 1]
 
-            loss_peak = criterion(pred_peak / 100.0, true_peak / 100.0)
-            loss_final = criterion(pred_final / 100.0, true_final / 100.0)
+            # Log-MSE Loss
+            loss_peak = torch.mean((torch.log1p(pred_peak) - torch.log1p(true_peak)) ** 2)
+            loss_final = torch.mean((torch.log1p(pred_final) - torch.log1p(true_final)) ** 2)
 
-            # 物理约束: Phi_m > Phi_peak (已经在模型内部通过结构保证，这里作为辅助)
-            loss_reg = torch.mean(torch.relu(pred_phi_peak - pred_phi_m)) * 100.0
+            # 物理约束: Phi_m > Phi_peak
+            loss_reg_phy = torch.mean(torch.relu(pred_phi_peak - pred_phi_m)) * 10.0
 
-            loss = loss_peak + loss_final + loss_reg
+            loss = loss_peak + loss_final + loss_reg_phy
 
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -127,17 +134,19 @@ def train():
         avg_loss_final = epoch_loss_final / len(loader)
 
         phi_m_mean = np.mean(phi_m_stats)
+        phi_peak_mean = np.mean(phi_peak_stats)
         g_max_mean = np.mean(g_max_stats)
 
         history['loss'].append(avg_loss)
         history['loss_peak'].append(avg_loss_peak)
         history['loss_final'].append(avg_loss_final)
         history['phi_m'].append(phi_m_mean)
+        history['phi_peak'].append(phi_peak_mean)
         history['g_max'].append(g_max_mean)
 
         if (epoch + 1) % 10 == 0:
-            print(f"Epoch {epoch+1}/{epochs} | Loss: {avg_loss:.4f} (P:{avg_loss_peak:.2f}, F:{avg_loss_final:.2f}) | "
-                  f"Phi_m: {phi_m_mean:.3f}")
+            print(f"Epoch {epoch+1}/{epochs} | LogLoss: {avg_loss:.4f} (P:{avg_loss_peak:.2f}, F:{avg_loss_final:.2f}) | "
+                  f"Phi_m: {phi_m_mean:.3f} | Phi_peak: {phi_peak_mean:.3f}")
 
     # 4. 保存模型
     os.makedirs("models", exist_ok=True)
@@ -154,21 +163,22 @@ def train():
         sample_y = y_tensor[:5].to(device)
         pred, params = model(sample_X)
 
+        phi_peak_pred = params[3]
+        phi_final_input = sample_X[:, 0]
+
         print("\nValidation Samples (True vs Pred):")
-        print("   Peak(True) | Peak(Pred) || Final(True) | Final(Pred)")
+        print("   Peak(True) | Peak(Pred) || Final(True) | Final(Pred) || Phi_final -> Phi_peak(Pred)")
         for i in range(5):
-            print(f"   {sample_y[i,0]:.0f}       | {pred[i,0]:.0f}       || {sample_y[i,1]:.0f}        | {pred[i,1]:.0f}")
+            print(f"   {sample_y[i,0]:.0f}       | {pred[i,0]:.0f}       || {sample_y[i,1]:.0f}        | {pred[i,1]:.0f}        || {phi_final_input[i]:.3f} -> {phi_peak_pred[i]:.3f}")
 
 def plot_training_history(history):
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+    fig, axes = plt.subplots(1, 4, figsize=(24, 5))
 
     # Loss
-    axes[0].plot(history['loss'], label='Total Loss', color='black')
-    axes[0].plot(history['loss_peak'], label='Peak Loss', color='red', linestyle='--')
-    axes[0].plot(history['loss_final'], label='Final Loss', color='blue', linestyle='--')
-    axes[0].set_title('Loss History')
-    axes[0].set_xlabel('Epoch')
-    axes[0].set_ylabel('Scaled MSE Loss')
+    axes[0].plot(history['loss'], label='Total LogLoss', color='black')
+    axes[0].plot(history['loss_peak'], label='Peak LogLoss', color='red', linestyle='--')
+    axes[0].plot(history['loss_final'], label='Final LogLoss', color='blue', linestyle='--')
+    axes[0].set_title('Log-MSE Loss History')
     axes[0].legend()
     axes[0].grid(True)
 
@@ -181,6 +191,12 @@ def plot_training_history(history):
     axes[2].plot(history['g_max'], label='Avg G_max', color='purple')
     axes[2].set_title('Physical Parameter: G_max')
     axes[2].grid(True)
+
+    # Phi_peak
+    axes[3].plot(history['phi_peak'], label='Avg Phi_peak', color='orange')
+    axes[3].set_title('Predicted Phi_peak')
+    axes[3].set_ylabel('Solid Fraction')
+    axes[3].grid(True)
 
     plt.tight_layout()
     plot_dir = "data/synthetic/plots"
