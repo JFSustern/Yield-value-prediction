@@ -36,6 +36,7 @@ def train():
                    'Emix(混合功_J)', 'Temp(温度_C)', 'Curing_Ratio(固化剂比例)']
 
     # 目标值: [Tau0_peak, Tau0_final]
+    # 回退: 移除 Phi_m_true 监督
     target_cols = ['Tau0_peak(高峰屈服_Pa)', 'Tau0_final(最终屈服_Pa)']
 
     X = train_df[feature_cols].values.astype(np.float32)
@@ -59,9 +60,8 @@ def train():
         device = torch.device("cpu")
     print(f"Using device: {device}")
 
-    model = YodelPINN(input_dim=6).to(device)
+    model = YodelPINN(input_dim=6, hidden_dim=128).to(device)
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
-    # criterion = nn.MSELoss() # 弃用普通 MSE
 
     # 3. 训练循环
     print("Step 3: Starting Training...")
@@ -93,6 +93,7 @@ def train():
             optimizer.zero_grad()
 
             # Forward -> [batch, 2]
+            # params: (phi_m_pred, m1_pred, g_max_pred, phi_peak_pred, phi_peak_delta)
             pred_tau0, params = model(batch_X)
 
             pred_phi_m = params[0]
@@ -104,15 +105,11 @@ def train():
             g_max_stats.extend(pred_g_max.detach().cpu().numpy().flatten())
 
             # Loss Calculation: Log-MSE
-            # 使用 log(1+x) 来处理跨数量级数据，同时避免 log(0)
-            # 这样 10->100 的误差 和 1000->10000 的误差权重相当
-
             pred_peak = pred_tau0[:, 0]
             pred_final = pred_tau0[:, 1]
             true_peak = batch_y[:, 0]
             true_final = batch_y[:, 1]
 
-            # Log-MSE Loss
             loss_peak = torch.mean((torch.log1p(pred_peak) - torch.log1p(true_peak)) ** 2)
             loss_final = torch.mean((torch.log1p(pred_final) - torch.log1p(true_final)) ** 2)
 
@@ -145,7 +142,7 @@ def train():
         history['g_max'].append(g_max_mean)
 
         if (epoch + 1) % 10 == 0:
-            print(f"Epoch {epoch+1}/{epochs} | LogLoss: {avg_loss:.4f} (P:{avg_loss_peak:.2f}, F:{avg_loss_final:.2f}) | "
+            print(f"Epoch {epoch+1}/{epochs} | LogLoss: {avg_loss:.4f} | "
                   f"Phi_m: {phi_m_mean:.3f} | Phi_peak: {phi_peak_mean:.3f}")
 
     # 4. 保存模型
@@ -187,15 +184,15 @@ def plot_training_history(history):
     axes[1].set_title('Physical Parameter: Phi_m')
     axes[1].grid(True)
 
-    # G_max
-    axes[2].plot(history['g_max'], label='Avg G_max', color='purple')
-    axes[2].set_title('Physical Parameter: G_max')
+    # Phi_peak
+    axes[2].plot(history['phi_peak'], label='Avg Phi_peak', color='orange')
+    axes[2].set_title('Predicted Phi_peak')
+    axes[2].set_ylabel('Solid Fraction')
     axes[2].grid(True)
 
-    # Phi_peak
-    axes[3].plot(history['phi_peak'], label='Avg Phi_peak', color='orange')
-    axes[3].set_title('Predicted Phi_peak')
-    axes[3].set_ylabel('Solid Fraction')
+    # G_max
+    axes[3].plot(history['g_max'], label='Avg G_max', color='purple')
+    axes[3].set_title('Physical Parameter: G_max')
     axes[3].grid(True)
 
     plt.tight_layout()

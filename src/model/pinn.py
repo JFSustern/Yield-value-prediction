@@ -6,13 +6,13 @@ from src.physics.yodel import yodel_mechanism, calc_m1, calc_phi_c
 
 
 class YodelPINN(nn.Module):
-    def __init__(self, input_dim=6, hidden_dim=64):
+    def __init__(self, input_dim=6, hidden_dim=128):
         """
         Physics-Integrated Neural Network for Dual-Stage Yield Stress Prediction
 
         Args:
             input_dim: 输入维度 [Phi_final, d50, sigma, Emix, Temp, Ratio_curing]
-            hidden_dim: 隐藏层维度
+            hidden_dim: 隐藏层维度 (增加到 128 以增强拟合能力)
         """
         super().__init__()
 
@@ -20,9 +20,11 @@ class YodelPINN(nn.Module):
         # 预测中间物理参数:
         # 1. Phi_m_pred: 最大堆积密度
         # 2. G_max_factor: 相互作用力修正系数
-        # 3. Phi_peak_delta: Peak阶段固含量相对于Final的增量 (全黑盒预测)
+        # 3. Phi_peak_delta: Peak阶段固含量增量 (全黑盒预测)
         self.net = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
+            nn.Tanh(),
+            nn.Linear(hidden_dim, hidden_dim),
             nn.Tanh(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.Tanh(),
@@ -50,7 +52,6 @@ class YodelPINN(nn.Module):
         phi_final = x[:, 0]
         d50 = x[:, 1]
         sigma = x[:, 2]
-        # ratio_curing = x[:, 5] # 模型现在通过黑盒方式学习 ratio 对 phi_peak 的影响
 
         raw_phi_m = out[:, 0]
         raw_g_max = out[:, 1]
@@ -59,17 +60,17 @@ class YodelPINN(nn.Module):
         # 2. 物理参数解码
 
         # A. 全黑盒预测 Phi_peak
-        # 物理约束：Phi_peak 必须大于 Phi_final (因为少了液体)
-        # 策略：预测增量 delta > 0
-        # 使用 Softplus 保证正数，且梯度平滑
         phi_peak_delta = torch.nn.functional.softplus(raw_phi_peak_delta)
         phi_peak_pred = phi_final + phi_peak_delta
 
         # B. Phi_m 解码
-        # 物理约束：Phi_m 必须大于 Phi_peak_pred (否则堵塞)
-        # 限制在 [Phi_peak_pred, 0.80] 之间
-        max_packing = 0.80
-        # 使用 Sigmoid 保证在合理区间
+        # 物理约束：Phi_m 必须大于 Phi_peak_pred
+        # 修正：将上限从 0.85 降至 0.76，强制模型在合理物理范围内求解
+        # 真实推进剂体系的 Phi_m 通常在 0.72-0.76 之间
+        max_packing = 0.76
+
+        # 使用 Sigmoid 保证在 [Phi_peak, max_packing] 之间
+        # 注意：如果 Phi_peak 预测过高接近 0.76，这里空间会很小，迫使模型降低 Phi_peak
         phi_m_pred = phi_peak_pred + torch.sigmoid(raw_phi_m) * (max_packing - phi_peak_pred)
 
         # C. G_max 解码
@@ -84,10 +85,7 @@ class YodelPINN(nn.Module):
         phi_c = calc_phi_c(d50, sigma)
 
         # 调用 YODEL 主方程 (双阶段)
-        # Peak 阶段使用黑盒预测的 Phi_peak_pred
         tau0_peak = yodel_mechanism(phi_peak_pred, phi_m_pred, phi_c, m1_pred)
-
-        # Final 阶段使用输入的 Phi_final
         tau0_final = yodel_mechanism(phi_final, phi_m_pred, phi_c, m1_pred)
 
         # 拼接输出 [batch, 2]
@@ -104,4 +102,5 @@ if __name__ == "__main__":
     print(f"Input: {x}")
     print(f"Predicted Tau0: {tau0.detach().numpy()} Pa")
     print(f"Phi_peak (Black-box): {params[3].item():.4f} (Delta: {params[4].item():.4f})")
+    print(f"Phi_m: {params[0].item():.4f}")
 
