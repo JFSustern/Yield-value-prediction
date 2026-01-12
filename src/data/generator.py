@@ -80,8 +80,9 @@ class ProcessBasedGenerator:
 
         for _ in range(n_samples):
             # 1. 基础物性 (PSD)
-            d50 = np.random.uniform(5.0, 50.0)
-            sigma = np.random.uniform(1.2, 2.0)
+            # 缩小方差：d50 [20, 30], sigma [1.4, 1.6]
+            d50 = np.random.uniform(20.0, 30.0)
+            sigma = np.random.uniform(1.4, 1.6)
 
             # 2. 固含量 (Phi)
             # T2 (Final) 固含量
@@ -174,11 +175,14 @@ class ProcessBasedGenerator:
         # 6. 物理约束过滤
         # 过滤无效值
         df = df[
-            (df['Tau0_1(屈服应力_Pa)'] > 0) & (df['Tau0_1(屈服应力_Pa)'] < 20000) &
-            (df['Tau0_2(屈服应力_Pa)'] > 0) & (df['Tau0_2(屈服应力_Pa)'] < 10000) &
+            (df['Tau0_1(屈服应力_Pa)'] > 0) & (df['Tau0_1(屈服应力_Pa)'] < 5000) &
+            (df['Tau0_2(屈服应力_Pa)'] > 0) & (df['Tau0_2(屈服应力_Pa)'] < 5000) &
             (df['Phi_1(固含量)'] < df['Phi_m_1(最大堆积)']) &
             (df['Phi_2(固含量)'] < df['Phi_m_2(最大堆积)'])
         ]
+
+        # Round to 4 decimal places
+        df = df.round(4)
 
         print(f"Generated {len(df)} valid samples after filtering.")
 
