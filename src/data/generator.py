@@ -86,16 +86,16 @@ class ProcessBasedGenerator:
 
         for _ in range(n_samples):
             # 1. 基础物性 (PSD)
-            # d50 [25, 35], sigma [1.55, 1.7]
-            d50 = np.random.uniform(25.0, 35.0)
-            sigma = np.random.uniform(1.55, 1.7)
+            # d50 [22, 28], sigma [1.5, 1.6]
+            d50 = np.random.uniform(22.0, 28.0)
+            sigma = np.random.uniform(1.5, 1.6)
 
             # 2. 固含量 (Phi)
-            # T2 (Final) 固含量 [0.62, 0.64]
-            phi_2 = np.random.uniform(0.62, 0.64)
+            # T2 (Final) 固含量 [0.64, 0.66]
+            phi_2 = np.random.uniform(0.64, 0.66)
 
-            # 固化剂比例 [0.15, 0.20]
-            ratio_curing = np.random.uniform(0.15, 0.20)
+            # 固化剂比例 [0.04, 0.06]
+            ratio_curing = np.random.uniform(0.04, 0.06)
 
             # Phi_1 计算 (稀释逆推)
             # Phi_1 = Phi_2 / (Phi_2 + (1-ratio)*(1-Phi_2))
