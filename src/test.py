@@ -144,6 +144,10 @@ def evaluate_dual_stage(model, data_path, device):
     X2 = df_test[['Phi_2(固含量)', 'd50(中位径_um)', 'sigma(几何标准差)', 'Emix_2(混合功_J)', 'Temp_2(温度_C)']].values.astype(np.float32)
     y2_true = df_test['Tau0_2(屈服应力_Pa)'].values.astype(np.float32)
 
+    # 准备 Point New (83 min) 数据
+    X_new = df_test[['Phi_83(固含量)', 'd50(中位径_um)', 'sigma(几何标准差)', 'Emix_83(混合功_J)', 'Temp_83(温度_C)']].values.astype(np.float32)
+    y_new_true = df_test['Tau0_83(屈服应力_Pa)'].values.astype(np.float32)
+
     # 预测
     model.eval()
     with torch.no_grad():
@@ -151,25 +155,32 @@ def evaluate_dual_stage(model, data_path, device):
         pred1, _ = model(torch.from_numpy(X1).to(device))
         y1_pred = pred1.cpu().numpy().flatten()
 
+        # Point New (83 min)
+        pred_new, _ = model(torch.from_numpy(X_new).to(device))
+        y_new_pred = pred_new.cpu().numpy().flatten()
+
         # Point 2
         pred2, _ = model(torch.from_numpy(X2).to(device))
         y2_pred = pred2.cpu().numpy().flatten()
 
     # 计算指标
     r2_1 = r2_score(y1_true, y1_pred)
+    r2_new = r2_score(y_new_true, y_new_pred)
     r2_2 = r2_score(y2_true, y2_pred)
 
     print(f"Point 1 (48 min) R²: {r2_1:.4f}")
+    print(f"Point New (83 min) R²: {r2_new:.4f}")
     print(f"Point 2 (111 min) R²: {r2_2:.4f}")
 
     # 绘制对比图
-    fig, ax = plt.subplots(figsize=(8, 8))
-    ax.scatter(y1_true, y1_pred, color='red', alpha=0.5, label='Point 1 (Peak)', s=15)
-    ax.scatter(y2_true, y2_pred, color='blue', alpha=0.5, label='Point 2 (Final)', s=15)
+    fig, ax = plt.subplots(figsize=(10, 8))
+    ax.scatter(y1_true, y1_pred, color='red', alpha=0.5, label='Point 1 (48 min)', s=15)
+    ax.scatter(y_new_true, y_new_pred, color='green', alpha=0.5, label='Point New (83 min)', s=15)
+    ax.scatter(y2_true, y2_pred, color='blue', alpha=0.5, label='Point 2 (111 min)', s=15)
 
     # 统一坐标轴范围
-    all_min = min(y1_true.min(), y2_true.min())
-    all_max = max(y1_true.max(), y2_true.max())
+    all_min = min(y1_true.min(), y2_true.min(), y_new_true.min())
+    all_max = max(y1_true.max(), y2_true.max(), y_new_true.max())
     ax.plot([all_min, all_max], [all_min, all_max], 'k--', lw=2)
 
     ax.set_title('Dual Stage Prediction Accuracy')

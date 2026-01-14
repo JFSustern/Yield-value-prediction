@@ -23,7 +23,7 @@ class ProcessBasedGenerator:
             {'duration': 10, 'speed': (22, 26), 'torque': (900, 1000), 'temp': (47, 49)},
             # 5. Mix (End of T1 = 48 min)
             {'duration': 8,  'speed': (22, 26), 'torque': (450, 500), 'temp': (47, 50)},
-            # 6. High Speed Mix
+            # 6. High Speed Mix (End of T_new = 83 min)
             {'duration': 35, 'speed': (28, 32), 'torque': (1950, 2050), 'temp': (52, 53)},
             # 7. Add Curing Agent
             {'duration': 3,  'speed': (10, 14), 'torque': (1750, 1850), 'temp': (50, 51)},
@@ -39,6 +39,7 @@ class ProcessBasedGenerator:
 
         # 记录关键时间点的状态
         state_t1 = {} # 48 min
+        state_t_new = {} # 83 min (High Speed Mix End, Before Curing Agent)
         state_t2 = {} # 111 min
 
         current_time = 0
@@ -66,12 +67,17 @@ class ProcessBasedGenerator:
                 state_t1['Emix'] = emix_accum
                 state_t1['Temp'] = temp
 
+            # T_new: End of Stage 6 (48 + 35 = 83)
+            if i == 5:
+                state_t_new['Emix'] = emix_accum
+                state_t_new['Temp'] = temp
+
             # T2: End of Stage 8 (48 + 35 + 3 + 25 = 111)
             if i == 7:
                 state_t2['Emix'] = emix_accum
                 state_t2['Temp'] = temp
 
-        return state_t1, state_t2
+        return state_t1, state_t_new, state_t2
 
     def generate(self, n_samples=2000, save_path="data/synthetic/dataset.csv"):
         print(f"Generating {n_samples} samples based on process chart...")
@@ -80,30 +86,23 @@ class ProcessBasedGenerator:
 
         for _ in range(n_samples):
             # 1. 基础物性 (PSD)
-            # 缩小方差：d50 [20, 30], sigma [1.4, 1.6]
-            d50 = np.random.uniform(20.0, 30.0)
-            sigma = np.random.uniform(1.4, 1.6)
+            # d50 [25, 35], sigma [1.55, 1.7]
+            d50 = np.random.uniform(25.0, 35.0)
+            sigma = np.random.uniform(1.55, 1.7)
 
             # 2. 固含量 (Phi)
-            # T2 (Final) 固含量
-            phi_2 = np.random.uniform(0.60, 0.75)
+            # T2 (Final) 固含量 [0.62, 0.64]
+            phi_2 = np.random.uniform(0.62, 0.64)
 
-            # T1 (Peak) 固含量 - 未加固化剂，所以固含量更高
-            # 假设固化剂占液相体积的 10% - 25%
-            ratio_curing = np.random.uniform(0.10, 0.25)
+            # 固化剂比例 [0.15, 0.20]
+            ratio_curing = np.random.uniform(0.15, 0.20)
 
             # Phi_1 计算 (稀释逆推)
-            # V_solid = Phi_2 * V_total_2
-            # V_liquid_2 = (1 - Phi_2) * V_total_2
-            # V_liquid_1 = V_liquid_2 * (1 - ratio_curing)
-            # V_total_1 = V_solid + V_liquid_1
-            # Phi_1 = V_solid / V_total_1
-
-            # 简化公式: Phi_1 = Phi_2 / (Phi_2 + (1-ratio)*(1-Phi_2))
+            # Phi_1 = Phi_2 / (Phi_2 + (1-ratio)*(1-Phi_2))
             phi_1 = phi_2 / (phi_2 + (1 - ratio_curing) * (1 - phi_2))
 
             # 3. 工序模拟 (Emix, Temp)
-            state_t1, state_t2 = self._simulate_single_process()
+            state_t1, state_t_new, state_t2 = self._simulate_single_process()
 
             # 4. 物理计算 (YODEL)
             # 转换为 Tensor
@@ -118,35 +117,36 @@ class ProcessBasedGenerator:
             t_emix_1 = torch.tensor(state_t1['Emix'], dtype=torch.float32)
             t_temp_1 = torch.tensor(state_t1['Temp'], dtype=torch.float32)
 
-            # G_max 1
             g_max_base = 80000.0
             g_max_1 = g_max_base * (1 + 0.05 * (t_temp_1 - 25.0))
-
-            # m1 1
             m1_1 = calc_m1(t_d50, g_max_1)
 
-            # Phi_m 1
             phi_m0 = 0.65 + 0.1 * (t_sigma - 1.2)
             phi_m_1 = calc_phi_m_dynamic(phi_m0, t_emix_1)
 
-            # Tau0 1
             tau0_1 = yodel_mechanism(t_phi_1, phi_m_1, phi_c, m1_1)
+
+            # --- Point New (83 min) ---
+            # 此时尚未加固化剂，固含量仍为 Phi_1
+            t_phi_new = torch.tensor(phi_1, dtype=torch.float32)
+            t_emix_new = torch.tensor(state_t_new['Emix'], dtype=torch.float32)
+            t_temp_new = torch.tensor(state_t_new['Temp'], dtype=torch.float32)
+
+            g_max_new = g_max_base * (1 + 0.05 * (t_temp_new - 25.0))
+            m1_new = calc_m1(t_d50, g_max_new)
+            phi_m_new = calc_phi_m_dynamic(phi_m0, t_emix_new)
+
+            tau0_new = yodel_mechanism(t_phi_new, phi_m_new, phi_c, m1_new)
 
             # --- Point 2 (111 min) ---
             t_phi_2 = torch.tensor(phi_2, dtype=torch.float32)
             t_emix_2 = torch.tensor(state_t2['Emix'], dtype=torch.float32)
             t_temp_2 = torch.tensor(state_t2['Temp'], dtype=torch.float32)
 
-            # G_max 2
             g_max_2 = g_max_base * (1 + 0.05 * (t_temp_2 - 25.0))
-
-            # m1 2
             m1_2 = calc_m1(t_d50, g_max_2)
-
-            # Phi_m 2
             phi_m_2 = calc_phi_m_dynamic(phi_m0, t_emix_2)
 
-            # Tau0 2
             tau0_2 = yodel_mechanism(t_phi_2, phi_m_2, phi_c, m1_2)
 
             # 5. 收集数据
@@ -154,14 +154,21 @@ class ProcessBasedGenerator:
                 'd50(中位径_um)': d50,
                 'sigma(几何标准差)': sigma,
 
-                # Point 1
+                # Point 1 (48 min)
                 'Phi_1(固含量)': phi_1,
                 'Phi_m_1(最大堆积)': phi_m_1.item(),
                 'Emix_1(混合功_J)': state_t1['Emix'],
                 'Temp_1(温度_C)': state_t1['Temp'],
                 'Tau0_1(屈服应力_Pa)': tau0_1.item(),
 
-                # Point 2
+                # Point New (83 min) - For Display Only
+                'Phi_83(固含量)': phi_1, # Same as Phi_1
+                'Phi_m_83(最大堆积)': phi_m_new.item(),
+                'Emix_83(混合功_J)': state_t_new['Emix'],
+                'Temp_83(温度_C)': state_t_new['Temp'],
+                'Tau0_83(屈服应力_Pa)': tau0_new.item(),
+
+                # Point 2 (111 min)
                 'Phi_2(固含量)': phi_2,
                 'Phi_m_2(最大堆积)': phi_m_2.item(),
                 'Emix_2(混合功_J)': state_t2['Emix'],
@@ -174,8 +181,9 @@ class ProcessBasedGenerator:
 
         # 6. 物理约束过滤
         # 过滤无效值
+        # Tau0_1 必须在 [70, 120]
         df = df[
-            (df['Tau0_1(屈服应力_Pa)'] > 0) & (df['Tau0_1(屈服应力_Pa)'] < 200) &
+            (df['Tau0_1(屈服应力_Pa)'] >= 70) & (df['Tau0_1(屈服应力_Pa)'] <= 120) &
             (df['Tau0_2(屈服应力_Pa)'] > 0) & (df['Tau0_2(屈服应力_Pa)'] < 200) &
             (df['Phi_1(固含量)'] < df['Phi_m_1(最大堆积)']) &
             (df['Phi_2(固含量)'] < df['Phi_m_2(最大堆积)'])
