@@ -108,11 +108,11 @@ def plot_test_results(y_true, y_pred):
     axes[0].set_xscale('log')
     axes[0].set_yscale('log')
 
-    # Residuals
-    residuals = y_pred - y_true
-    axes[1].hist(residuals, bins=30, color='green', alpha=0.7)
-    axes[1].set_title('Residual Distribution')
-    axes[1].set_xlabel('Error (Pa)')
+    # Percentage Error Distribution
+    percent_error = ((y_pred - y_true) / y_true) * 100
+    axes[1].hist(percent_error, bins=30, color='green', alpha=0.7)
+    axes[1].set_title('Relative Error Distribution')
+    axes[1].set_xlabel('Error (%)')
     axes[1].grid(True)
 
     plt.tight_layout()
