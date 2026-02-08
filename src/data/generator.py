@@ -127,8 +127,8 @@ class ProcessBasedGenerator:
             tau0_1 = yodel_mechanism(t_phi_1, phi_m_1, phi_c, m1_1)
 
             # --- Point New (83 min) ---
-            # 修正：此时已加完固化剂，固含量为 Phi_2
-            t_phi_new = torch.tensor(phi_2, dtype=torch.float32)
+            # 此时高速混合刚结束，固化剂还未添加，固含量仍为 Phi_1
+            t_phi_new = torch.tensor(phi_1, dtype=torch.float32)
             t_emix_new = torch.tensor(state_t_new['Emix'], dtype=torch.float32)
             t_temp_new = torch.tensor(state_t_new['Temp'], dtype=torch.float32)
 
@@ -163,8 +163,8 @@ class ProcessBasedGenerator:
                 'Temp_1(温度_C)': state_t1['Temp'],
                 'Tau0_1(屈服应力_Pa)': tau0_1.item(),
 
-                # Point New (83 min) - For Display Only
-                'Phi_83(固含量)': phi_2, # Same as Phi_2
+                # Point New (83 min) - 高速混合结束，固化剂未加
+                'Phi_83(固含量)': phi_1, # 固化剂还未添加，固含量仍为 Phi_1
                 'Phi_m_83(最大堆积)': phi_m_new.item(),
                 'Emix_83(混合功_J)': state_t_new['Emix'],
                 'Temp_83(温度_C)': state_t_new['Temp'],

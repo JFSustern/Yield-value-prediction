@@ -8,7 +8,7 @@
 
 - **物理-AI混合建模**: 将YODEL颗粒网络理论与神经网络深度融合
 - **工序模拟**: 基于真实混合工序的9阶段能量追踪
-- **多时间点预测**: 同时预测48min(稀释前)、83min(高速混合后)、111min(固化后)三个关键时间点
+- **多时间点预测**: 同时预测48min(混合中期)、83min(高速混合后,固化剂未加)、111min(固化剂加入并混合后)三个关键时间点
 - **高精度**: 训练Loss收敛至~16 Pa, R²>0.8
 - **可解释性强**: 网络预测物理参数(Φₘ, G_max),而非黑盒输出
 
@@ -168,10 +168,10 @@ YODEL机理: Tau0 = yodel_mechanism(...)
 **9个工序阶段**:
 1. Initial Mix (10 min)
 2. Add Oxidizer 1-3 (30 min)
-3. Mix End (8 min) → **T1检查点 (48 min)**
-4. High Speed Mix (35 min) → **T_new检查点 (83 min)**
+3. Mix End (8 min) → **T1检查点 (48 min, Phi=Phi_1)**
+4. High Speed Mix (35 min) → **T_new检查点 (83 min, Phi=Phi_1, 固化剂未加)**
 5. Add Curing Agent (3 min)
-6. Final Mix (25 min) → **T2检查点 (111 min)**
+6. Final Mix (25 min) → **T2检查点 (111 min, Phi=Phi_2)**
 7. Resting (15 min)
 
 **参数范围**:

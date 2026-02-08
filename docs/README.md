@@ -168,10 +168,10 @@ YODEL机理: Tau0 = yodel_mechanism(...)
 **9个工序阶段**:
 1. Initial Mix (10 min)
 2. Add Oxidizer 1-3 (30 min)
-3. Mix End (8 min) → **T1检查点 (48 min)**
-4. High Speed Mix (35 min) → **T_new检查点 (83 min)**
+3. Mix End (8 min) → **T1检查点 (48 min, Phi=Phi_1)**
+4. High Speed Mix (35 min) → **T_new检查点 (83 min, Phi=Phi_1, 固化剂未加)**
 5. Add Curing Agent (3 min)
-6. Final Mix (25 min) → **T2检查点 (111 min)**
+6. Final Mix (25 min) → **T2检查点 (111 min, Phi=Phi_2)**
 7. Resting (15 min)
 
 **参数范围**:
