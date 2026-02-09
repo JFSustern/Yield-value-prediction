@@ -84,10 +84,10 @@ pip install torch numpy pandas openpyxl matplotlib scikit-learn
 ### 2. 生成合成数据
 
 ```bash
-python main.py generate --samples 20
+python main.py generate --samples 15
 ```
 
-生成约2788个有效样本,保存至`data/synthetic/`
+生成15000个样本，过滤后约2700个有效样本，保存至`data/synthetic/`
 
 ### 3. 训练PINN模型
 

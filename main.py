@@ -8,8 +8,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from src.train import train
 from src.test import test
-from src.data.loader import load_excel_data
-from src.data.generator import SyntheticDataGenerator
+from src.data.generator import ProcessBasedGenerator
 
 def main():
     parser = argparse.ArgumentParser(description="PINN for Rocket Fuel Yield Stress Prediction")
@@ -38,13 +37,10 @@ def main():
 
     elif args.command == "generate":
         print("Generating synthetic data...")
-        real_df = load_excel_data()
-        if real_df.empty:
-            print("No real data found in data/20251121处理后/")
-            return
-
-        gen = SyntheticDataGenerator(real_df)
-        gen.generate(n_samples_per_real=args.samples, save_path="data/synthetic/dataset.csv")
+        gen = ProcessBasedGenerator()
+        # 默认生成15000个样本，过滤后约2000-3000个有效样本
+        n_total = args.samples * 1000  # --samples参数现在代表千个样本
+        gen.generate(n_samples=n_total, save_path="data/synthetic/dataset.csv")
         print("Done.")
 
     else:
