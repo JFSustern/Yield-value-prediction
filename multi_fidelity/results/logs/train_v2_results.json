@@ -1,0 +1,61 @@
+[
+  {
+    "phase": "low_fidelity",
+    "timestamp": "2026-03-25 14:20",
+    "epochs_run": 89,
+    "elapsed_s": 0.9,
+    "hidden_dim": 64,
+    "lr": 0.001,
+    "batch_size": 64,
+    "train_samples": 1600,
+    "test_samples": 400,
+    "train": {
+      "loss": 0.000991,
+      "r2": 0.9599,
+      "mae": 0.038,
+      "mape": 7.43
+    },
+    "test": {
+      "loss": 0.001096,
+      "r2": 0.9598,
+      "mae": 0.0401,
+      "mape": 7.01
+    },
+    "hifi_before": {
+      "loss": 0.009542,
+      "r2": 0.7571,
+      "mae": 0.1329,
+      "mape": 16.56
+    }
+  },
+  {
+    "phase": "high_fidelity",
+    "timestamp": "2026-03-25 14:20",
+    "epochs_run": 500,
+    "elapsed_s": 0.3,
+    "freeze_n": 1,
+    "lr": 0.0001,
+    "hifi_samples": 16,
+    "all": {
+      "loss": 0.005343,
+      "r2": 0.9073,
+      "mae": 0.1041,
+      "mape": 16.9
+    }
+  },
+  {
+    "phase": "high_fidelity",
+    "timestamp": "2026-03-25 14:20",
+    "epochs_run": 500,
+    "elapsed_s": 0.4,
+    "freeze_n": 2,
+    "lr": 0.0001,
+    "hifi_samples": 16,
+    "all": {
+      "loss": 0.006427,
+      "r2": 0.8688,
+      "mae": 0.1141,
+      "mape": 17.11
+    }
+  }
+]

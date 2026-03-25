@@ -85,4 +85,3 @@ if __name__ == "__main__":
     print(f"Input: {x}")
     print(f"Predicted Tau0: {tau0.item():.2f} Pa")
     print(f"Predicted Params: Phi_m={params[0].item():.4f}, m1={params[1].item():.2f}, G_max={params[2].item():.2f}")
-
