@@ -1,61 +1,100 @@
 [
   {
     "phase": "low_fidelity",
-    "timestamp": "2026-03-25 14:20",
-    "epochs_run": 89,
-    "elapsed_s": 0.9,
+    "timestamp": "2026-03-26 11:32",
+    "epochs_run": 270,
+    "elapsed_s": 2.5,
     "hidden_dim": 64,
     "lr": 0.001,
     "batch_size": 64,
     "train_samples": 1600,
     "test_samples": 400,
     "train": {
-      "loss": 0.000991,
-      "r2": 0.9599,
-      "mae": 0.038,
-      "mape": 7.43
+      "loss": 0.000801,
+      "r2": 0.9669,
+      "mae": 0.0347,
+      "mape": 6.57
     },
     "test": {
-      "loss": 0.001096,
-      "r2": 0.9598,
-      "mae": 0.0401,
-      "mape": 7.01
+      "loss": 0.000752,
+      "r2": 0.9736,
+      "mae": 0.0343,
+      "mape": 6.05
     },
     "hifi_before": {
-      "loss": 0.009542,
-      "r2": 0.7571,
-      "mae": 0.1329,
-      "mape": 16.56
+      "loss": 0.009423,
+      "r2": 0.7646,
+      "mae": 0.1316,
+      "mape": 16.14
     }
   },
   {
     "phase": "high_fidelity",
-    "timestamp": "2026-03-25 14:20",
-    "epochs_run": 500,
-    "elapsed_s": 0.3,
+    "timestamp": "2026-03-26 11:32",
+    "epochs_run": 61,
+    "elapsed_s": 0.0,
     "freeze_n": 1,
     "lr": 0.0001,
     "hifi_samples": 16,
-    "all": {
-      "loss": 0.005343,
-      "r2": 0.9073,
-      "mae": 0.1041,
-      "mape": 16.9
+    "train_samples": 12,
+    "test_samples": 4,
+    "train": {
+      "loss": 0.01149,
+      "r2": 0.7585,
+      "mae": 0.1519,
+      "mape": 18.71
+    },
+    "test": {
+      "loss": 0.00172,
+      "r2": 0.9263,
+      "mae": 0.0685,
+      "mape": 9.39
     }
   },
   {
     "phase": "high_fidelity",
-    "timestamp": "2026-03-25 14:20",
-    "epochs_run": 500,
-    "elapsed_s": 0.4,
+    "timestamp": "2026-03-26 11:32",
+    "epochs_run": 61,
+    "elapsed_s": 0.0,
     "freeze_n": 2,
     "lr": 0.0001,
     "hifi_samples": 16,
-    "all": {
-      "loss": 0.006427,
-      "r2": 0.8688,
-      "mae": 0.1141,
-      "mape": 17.11
+    "train_samples": 12,
+    "test_samples": 4,
+    "train": {
+      "loss": 0.01184,
+      "r2": 0.7489,
+      "mae": 0.1523,
+      "mape": 18.46
+    },
+    "test": {
+      "loss": 0.001701,
+      "r2": 0.9281,
+      "mae": 0.069,
+      "mape": 9.49
+    }
+  },
+  {
+    "phase": "high_fidelity",
+    "timestamp": "2026-03-26 11:32",
+    "epochs_run": 63,
+    "elapsed_s": 0.0,
+    "freeze_n": 3,
+    "lr": 0.0001,
+    "hifi_samples": 16,
+    "train_samples": 12,
+    "test_samples": 4,
+    "train": {
+      "loss": 0.011902,
+      "r2": 0.7475,
+      "mae": 0.1525,
+      "mape": 18.46
+    },
+    "test": {
+      "loss": 0.001689,
+      "r2": 0.9286,
+      "mae": 0.0688,
+      "mape": 9.44
     }
   }
 ]

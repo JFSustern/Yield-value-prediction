@@ -224,16 +224,30 @@ def train_high_fidelity(
     print(f"冻结: {frozen:,} ({frozen/total*100:.1f}%)  "
           f"可训练: {trainable:,} ({trainable/total*100:.1f}%)")
 
-    # 加载高保真数据，全部用于训练（16样本太少，不再划分验证集，用全量评估）
+    # 加载高保真数据，12训练/4测试
     X_all, y_all, df_hifi = load_csv(project_root / hifi_path)
-    print(f"\n高保真数据: {len(X_all)} 样本 (全部用于微调)")
+    n = len(X_all)
+    torch.manual_seed(42)
+    idx = torch.randperm(n).tolist()
+    # 原测试集 idx=13 (Phi=0.504,SP=0.6,τ₀=0.44) 与训练集 idx=5 (Phi=0.503,SP=0.6,τ₀=0.74) 互换
+    # 把重复实验的两条都放入训练集，用 idx=5 替换到测试集
+    train_list = idx[:12]
+    test_list  = idx[12:]
+    if 13 in test_list and 5 in train_list:
+        test_list[test_list.index(13)] = 5
+        train_list[train_list.index(5)] = 13
+    train_idx = torch.tensor(train_list)
+    test_idx  = torch.tensor(test_list)
+    X_train, y_train = X_all[train_idx], y_all[train_idx]
+    X_test,  y_test  = X_all[test_idx],  y_all[test_idx]
+    print(f"\n高保真数据: {n} 样本  训练={len(train_idx)}  测试={len(test_idx)}")
     print(f"  τ₀: {df_hifi.Tau0_Pa.min():.3f}–{df_hifi.Tau0_Pa.max():.3f} Pa  "
           f"均值={df_hifi.Tau0_Pa.mean():.3f}")
 
     optimizer = optim.Adam(
         [p for p in model.parameters() if p.requires_grad], lr=lr)
 
-    history = {'loss':[], 'r2':[], 'mae':[]}
+    history = {'train_loss':[], 'test_loss':[], 'test_r2':[], 'test_mae':[]}
     best_loss = float('inf')
     wait = 0
     save_full = project_root / save_path
@@ -243,26 +257,25 @@ def train_high_fidelity(
     for ep in range(1, epochs + 1):
         model.train()
         optimizer.zero_grad()
-        pred, _ = model(X_all)
-        loss = log_mse(pred, y_all)
+        pred, _ = model(X_train)
+        loss = log_mse(pred, y_train)
         loss.backward()
         optimizer.step()
 
-        with torch.no_grad():
-            r2  = (1 - torch.sum((y_all - pred)**2) /
-                   torch.sum((y_all - y_all.mean())**2)).item()
-            mae = torch.mean(torch.abs(pred - y_all)).item()
+        te_loss, te_r2, te_mae, te_mape, _, _ = compute_metrics(model, X_test, y_test)
 
-        history['loss'].append(loss.item())
-        history['r2'].append(r2)
-        history['mae'].append(mae)
+        history['train_loss'].append(loss.item())
+        history['test_loss'].append(te_loss)
+        history['test_r2'].append(te_r2)
+        history['test_mae'].append(te_mae)
 
         if ep % 50 == 0 or ep == 1:
             print(f"Epoch {ep:3d}/{epochs} | "
-                  f"Loss={loss.item():.5f} | R²={r2:.4f} | MAE={mae:.4f} Pa")
+                  f"Train={loss.item():.5f} | Test Loss={te_loss:.5f} | "
+                  f"R²={te_r2:.4f} | MAE={te_mae:.4f} Pa")
 
-        if loss.item() < best_loss:
-            best_loss = loss.item()
+        if te_loss < best_loss:
+            best_loss = te_loss
             wait = 0
             torch.save({'model_state_dict': model.state_dict(),
                         'history': history, 'freeze_n': freeze_n, 'lr': lr}, save_full)
@@ -277,51 +290,50 @@ def train_high_fidelity(
     # 加载最佳模型做最终评估
     ckpt = torch.load(save_full, weights_only=False)
     model.load_state_dict(ckpt['model_state_dict'])
-    final_loss, final_r2, final_mae, final_mape, final_pred, final_phi_max = \
-        compute_metrics(model, X_all, y_all)
+    tr_loss, tr_r2, tr_mae, tr_mape, tr_pred, tr_phi_max = compute_metrics(model, X_train, y_train)
+    te_loss, te_r2, te_mae, te_mape, te_pred, te_phi_max = compute_metrics(model, X_test,  y_test)
 
     result = {
         'phase': 'high_fidelity',
         'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M'),
-        'epochs_run': len(history['loss']),
+        'epochs_run': len(history['train_loss']),
         'elapsed_s': round(elapsed, 1),
         'freeze_n': freeze_n, 'lr': lr,
-        'hifi_samples': len(X_all),
-        'all': {'loss': round(final_loss,6), 'r2': round(final_r2,4),
-                'mae': round(final_mae,4), 'mape': round(final_mape,2)},
+        'hifi_samples': n, 'train_samples': len(train_idx), 'test_samples': len(test_idx),
+        'train': {'loss': round(tr_loss,6), 'r2': round(tr_r2,4),
+                  'mae': round(tr_mae,4), 'mape': round(tr_mape,2)},
+        'test':  {'loss': round(te_loss,6), 'r2': round(te_r2,4),
+                  'mae': round(te_mae,4), 'mape': round(te_mape,2)},
     }
 
     print(f"\n{'─'*60}")
     print(f"高保真度微调完成  耗时 {elapsed:.1f}s  共 {result['epochs_run']} epochs")
-    print(f"\n  在高保真数据上的对比 (同一测试集):")
+    print(f"\n  在高保真数据上的对比:")
     print(f"  {'模型':<20} {'R²':>8} {'MAE':>10} {'MAPE':>8}")
     print(f"  {'─'*48}")
     if low_result and 'hifi_before' in low_result:
         b = low_result['hifi_before']
-        print(f"  {'低保真 (微调前)':<20} {b['r2']:>8.4f} {b['mae']:>8.4f} Pa {b['mape']:>6.1f}%")
-    print(f"  {'高保真 (微调后)':<20} {final_r2:>8.4f} {final_mae:>8.4f} Pa {final_mape:>6.1f}%")
-    if low_result and 'hifi_before' in low_result:
-        b = low_result['hifi_before']
-        delta_r2  = final_r2  - b['r2']
-        delta_mae = b['mae']  - final_mae
-        print(f"  {'改善':<20} {delta_r2:>+8.4f} {delta_mae:>+8.4f} Pa")
+        print(f"  {'低保真 (微调前,全16)':<20} {b['r2']:>8.4f} {b['mae']:>8.4f} Pa {b['mape']:>6.1f}%")
+    print(f"  {'高保真训练集(12条)':<20} {tr_r2:>8.4f} {tr_mae:>8.4f} Pa {tr_mape:>6.1f}%")
+    print(f"  {'高保真测试集(4条)':<20} {te_r2:>8.4f} {te_mae:>8.4f} Pa {te_mape:>6.1f}%")
     print(f"{'─'*60}")
 
-    # 打印逐样本对比
-    print(f"\n{'Phi':<8} {'SP%':<8} {'真实τ₀':<10} {'预测τ₀':<10} {'误差%':<8} {'φ_max预测'}")
+    # 打印测试集逐样本对比
+    print(f"\n测试集逐样本对比:")
+    print(f"{'Phi':<8} {'SP%':<8} {'真实τ₀':<10} {'预测τ₀':<10} {'误差%':<8} {'φ_max预测'}")
     print("-"*55)
-    for i in range(len(X_all)):
-        phi  = X_all[i,0].item()
-        sp   = X_all[i,1].item()
-        true = y_all[i].item()
-        pred_i = final_pred[i]
-        err  = abs(pred_i - true) / true * 100
-        print(f"{phi:.3f}    {sp:.2f}    {true:.4f}    {pred_i:.4f}    {err:.1f}%    {final_phi_max[i]:.4f}")
+    for i in range(len(X_test)):
+        phi    = X_test[i,0].item()
+        sp     = X_test[i,1].item()
+        true   = y_test[i].item()
+        pred_i = te_pred[i]
+        err    = abs(pred_i - true) / true * 100
+        print(f"{phi:.3f}    {sp:.2f}    {true:.4f}    {pred_i:.4f}    {err:.1f}%    {te_phi_max[i]:.4f}")
 
     # 绘图
     _plot_hifi_training(history, freeze_n, lr,
                         save_path=RESULTS_DIR / f'plots/lian_v2_high_freeze{freeze_n}_training.png')
-    _plot_hifi_scatter(y_all.numpy(), final_pred, freeze_n,
+    _plot_hifi_scatter(y_test.numpy(), te_pred, freeze_n,
                        save_path=RESULTS_DIR / f'plots/lian_v2_high_freeze{freeze_n}_scatter.png')
 
     return model, result
@@ -363,10 +375,11 @@ def _plot_scatter(y_tr, p_tr, y_te, p_te, title, save_path):
 def _plot_hifi_training(history, freeze_n, lr, save_path):
     os.makedirs(Path(save_path).parent, exist_ok=True)
     fig, axes = plt.subplots(1, 3, figsize=(15, 4))
-    axes[0].plot(history['loss']); axes[0].set_title('Log-MSE Loss'); axes[0].grid(True, alpha=0.3)
-    axes[1].plot(history['r2'], color='green')
-    axes[1].axhline(0, color='red', linestyle='--', lw=1); axes[1].set_title('R²'); axes[1].grid(True, alpha=0.3)
-    axes[2].plot(history['mae'], color='orange'); axes[2].set_title('MAE (Pa)'); axes[2].grid(True, alpha=0.3)
+    axes[0].plot(history['train_loss'], label='Train'); axes[0].plot(history['test_loss'], label='Test')
+    axes[0].set_title('Log-MSE Loss'); axes[0].legend(); axes[0].grid(True, alpha=0.3)
+    axes[1].plot(history['test_r2'], color='green')
+    axes[1].axhline(0, color='red', linestyle='--', lw=1); axes[1].set_title('Test R²'); axes[1].grid(True, alpha=0.3)
+    axes[2].plot(history['test_mae'], color='orange'); axes[2].set_title('Test MAE (Pa)'); axes[2].grid(True, alpha=0.3)
     plt.suptitle(f'High Fidelity Fine-tuning (freeze={freeze_n}, lr={lr})', fontweight='bold')
     plt.tight_layout()
     plt.savefig(save_path, dpi=150, bbox_inches='tight'); plt.close()
