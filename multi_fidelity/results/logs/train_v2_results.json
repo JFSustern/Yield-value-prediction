@@ -1,100 +1,313 @@
 [
   {
     "phase": "low_fidelity",
-    "timestamp": "2026-03-26 11:32",
-    "epochs_run": 270,
-    "elapsed_s": 2.5,
+    "timestamp": "2026-03-30 19:57",
+    "epochs_run": 170,
+    "elapsed_s": 1.5,
     "hidden_dim": 64,
     "lr": 0.001,
     "batch_size": 64,
     "train_samples": 1600,
     "test_samples": 400,
     "train": {
-      "loss": 0.000801,
+      "loss": 0.000799,
       "r2": 0.9669,
       "mae": 0.0347,
-      "mape": 6.57
+      "mape": 6.52
     },
     "test": {
-      "loss": 0.000752,
-      "r2": 0.9736,
+      "loss": 0.000745,
+      "r2": 0.974,
       "mae": 0.0343,
-      "mape": 6.05
+      "mape": 6.04
     },
     "hifi_before": {
-      "loss": 0.009423,
-      "r2": 0.7646,
-      "mae": 0.1316,
-      "mape": 16.14
+      "loss": 0.00935,
+      "r2": 0.766,
+      "mae": 0.131,
+      "mape": 16.04
     }
   },
   {
     "phase": "high_fidelity",
-    "timestamp": "2026-03-26 11:32",
-    "epochs_run": 61,
-    "elapsed_s": 0.0,
+    "timestamp": "2026-03-30 19:57",
+    "exp_tag": "freeze1_baseline",
+    "epochs_run": 400,
+    "elapsed_s": 0.4,
     "freeze_n": 1,
     "lr": 0.0001,
-    "hifi_samples": 16,
-    "train_samples": 12,
-    "test_samples": 4,
-    "train": {
-      "loss": 0.01149,
-      "r2": 0.7585,
-      "mae": 0.1519,
-      "mape": 18.71
+    "weight_decay": 0.0,
+    "use_scheduler": false,
+    "scheduler_T_max": null,
+    "scheduler_eta_min": null,
+    "early_stop_metric": "loss",
+    "best_epoch": 340,
+    "best_metric": 0.006694,
+    "checkpoint_path": "multi_fidelity/models/high_fidelity/lian_v2_high_freeze1_baseline.pth",
+    "hifi_train_path": "data/generated_yield_stress_data_20260327_135304.csv",
+    "eval_path": "data/high_fidelity/hifi_table6.csv",
+    "train_samples": 400,
+    "eval_samples": 16,
+    "frozen_params": 192,
+    "trainable_params": 8385,
+    "config": {
+      "freeze_n": 1,
+      "lr": 0.0001,
+      "epochs": 500,
+      "patience": 60,
+      "weight_decay": 0.0,
+      "use_scheduler": false,
+      "scheduler_T_max": 400,
+      "scheduler_eta_min": 5e-06,
+      "early_stop_metric": "loss",
+      "exp_tag": "freeze1_baseline"
     },
-    "test": {
-      "loss": 0.00172,
-      "r2": 0.9263,
-      "mae": 0.0685,
-      "mape": 9.39
+    "train": {
+      "loss": 0.0019,
+      "r2": 0.9306,
+      "mae": 0.0505,
+      "mape": 10.47
+    },
+    "eval": {
+      "loss": 0.006694,
+      "r2": 0.8609,
+      "mae": 0.1154,
+      "mape": 17.34
     }
   },
   {
     "phase": "high_fidelity",
-    "timestamp": "2026-03-26 11:32",
-    "epochs_run": 61,
+    "timestamp": "2026-03-30 19:57",
+    "exp_tag": "freeze2_baseline",
+    "epochs_run": 73,
     "elapsed_s": 0.0,
     "freeze_n": 2,
     "lr": 0.0001,
-    "hifi_samples": 16,
-    "train_samples": 12,
-    "test_samples": 4,
-    "train": {
-      "loss": 0.01184,
-      "r2": 0.7489,
-      "mae": 0.1523,
-      "mape": 18.46
+    "weight_decay": 0.0,
+    "use_scheduler": false,
+    "scheduler_T_max": null,
+    "scheduler_eta_min": null,
+    "early_stop_metric": "loss",
+    "best_epoch": 13,
+    "best_metric": 0.008972,
+    "checkpoint_path": "multi_fidelity/models/high_fidelity/lian_v2_high_freeze2_baseline.pth",
+    "hifi_train_path": "data/generated_yield_stress_data_20260327_135304.csv",
+    "eval_path": "data/high_fidelity/hifi_table6.csv",
+    "train_samples": 400,
+    "eval_samples": 16,
+    "frozen_params": 4352,
+    "trainable_params": 4225,
+    "config": {
+      "freeze_n": 2,
+      "lr": 0.0001,
+      "epochs": 500,
+      "patience": 60,
+      "weight_decay": 0.0,
+      "use_scheduler": false,
+      "scheduler_T_max": 400,
+      "scheduler_eta_min": 5e-06,
+      "early_stop_metric": "loss",
+      "exp_tag": "freeze2_baseline"
     },
-    "test": {
-      "loss": 0.001701,
-      "r2": 0.9281,
-      "mae": 0.069,
-      "mape": 9.49
+    "train": {
+      "loss": 0.004243,
+      "r2": 0.8351,
+      "mae": 0.0782,
+      "mape": 15.22
+    },
+    "eval": {
+      "loss": 0.008972,
+      "r2": 0.7848,
+      "mae": 0.1338,
+      "mape": 17.34
     }
   },
   {
     "phase": "high_fidelity",
-    "timestamp": "2026-03-26 11:32",
-    "epochs_run": 63,
-    "elapsed_s": 0.0,
+    "timestamp": "2026-03-30 19:57",
+    "exp_tag": "freeze3_baseline",
+    "epochs_run": 109,
+    "elapsed_s": 0.1,
     "freeze_n": 3,
     "lr": 0.0001,
-    "hifi_samples": 16,
-    "train_samples": 12,
-    "test_samples": 4,
-    "train": {
-      "loss": 0.011902,
-      "r2": 0.7475,
-      "mae": 0.1525,
-      "mape": 18.46
+    "weight_decay": 0.0,
+    "use_scheduler": false,
+    "scheduler_T_max": null,
+    "scheduler_eta_min": null,
+    "early_stop_metric": "loss",
+    "best_epoch": 49,
+    "best_metric": 0.008869,
+    "checkpoint_path": "multi_fidelity/models/high_fidelity/lian_v2_high_freeze3_baseline.pth",
+    "hifi_train_path": "data/generated_yield_stress_data_20260327_135304.csv",
+    "eval_path": "data/high_fidelity/hifi_table6.csv",
+    "train_samples": 400,
+    "eval_samples": 16,
+    "frozen_params": 8512,
+    "trainable_params": 65,
+    "config": {
+      "freeze_n": 3,
+      "lr": 0.0001,
+      "epochs": 500,
+      "patience": 60,
+      "weight_decay": 0.0,
+      "use_scheduler": false,
+      "scheduler_T_max": 400,
+      "scheduler_eta_min": 5e-06,
+      "early_stop_metric": "loss",
+      "exp_tag": "freeze3_baseline"
     },
-    "test": {
-      "loss": 0.001689,
-      "r2": 0.9286,
-      "mae": 0.0688,
-      "mape": 9.44
+    "train": {
+      "loss": 0.004368,
+      "r2": 0.8328,
+      "mae": 0.0797,
+      "mape": 15.63
+    },
+    "eval": {
+      "loss": 0.008869,
+      "r2": 0.7875,
+      "mae": 0.1333,
+      "mape": 17.31
+    }
+  },
+  {
+    "phase": "high_fidelity",
+    "timestamp": "2026-03-30 19:57",
+    "exp_tag": "exp10_r2_earlystop",
+    "epochs_run": 800,
+    "elapsed_s": 1.6,
+    "freeze_n": 1,
+    "lr": 0.0001,
+    "weight_decay": 0.0,
+    "use_scheduler": false,
+    "scheduler_T_max": null,
+    "scheduler_eta_min": null,
+    "early_stop_metric": "r2",
+    "best_epoch": 800,
+    "best_metric": 0.872839,
+    "checkpoint_path": "multi_fidelity/models/high_fidelity/lian_v2_high_exp10_r2_earlystop.pth",
+    "hifi_train_path": "data/generated_yield_stress_data_20260327_135304.csv",
+    "eval_path": "data/high_fidelity/hifi_table6.csv",
+    "train_samples": 400,
+    "eval_samples": 16,
+    "frozen_params": 192,
+    "trainable_params": 8385,
+    "config": {
+      "freeze_n": 1,
+      "lr": 0.0001,
+      "epochs": 800,
+      "patience": 100,
+      "weight_decay": 0.0,
+      "use_scheduler": false,
+      "scheduler_T_max": 400,
+      "scheduler_eta_min": 5e-06,
+      "early_stop_metric": "r2",
+      "exp_tag": "exp10_r2_earlystop"
+    },
+    "train": {
+      "loss": 0.001141,
+      "r2": 0.9598,
+      "mae": 0.041,
+      "mape": 8.21
+    },
+    "eval": {
+      "loss": 0.007619,
+      "r2": 0.8728,
+      "mae": 0.1187,
+      "mape": 19.07
+    }
+  },
+  {
+    "phase": "high_fidelity",
+    "timestamp": "2026-03-30 19:57",
+    "exp_tag": "exp11_smalllr_l2",
+    "epochs_run": 800,
+    "elapsed_s": 1.2,
+    "freeze_n": 1,
+    "lr": 5e-05,
+    "weight_decay": 0.0001,
+    "use_scheduler": false,
+    "scheduler_T_max": null,
+    "scheduler_eta_min": null,
+    "early_stop_metric": "r2",
+    "best_epoch": 800,
+    "best_metric": 0.849184,
+    "checkpoint_path": "multi_fidelity/models/high_fidelity/lian_v2_high_exp11_smalllr_l2.pth",
+    "hifi_train_path": "data/generated_yield_stress_data_20260327_135304.csv",
+    "eval_path": "data/high_fidelity/hifi_table6.csv",
+    "train_samples": 400,
+    "eval_samples": 16,
+    "frozen_params": 192,
+    "trainable_params": 8385,
+    "config": {
+      "freeze_n": 1,
+      "lr": 5e-05,
+      "epochs": 800,
+      "patience": 100,
+      "weight_decay": 0.0001,
+      "use_scheduler": false,
+      "scheduler_T_max": 400,
+      "scheduler_eta_min": 5e-06,
+      "early_stop_metric": "r2",
+      "exp_tag": "exp11_smalllr_l2"
+    },
+    "train": {
+      "loss": 0.001861,
+      "r2": 0.9304,
+      "mae": 0.0505,
+      "mape": 10.3
+    },
+    "eval": {
+      "loss": 0.007233,
+      "r2": 0.8492,
+      "mae": 0.12,
+      "mape": 17.99
+    }
+  },
+  {
+    "phase": "high_fidelity",
+    "timestamp": "2026-03-30 19:57",
+    "exp_tag": "exp12_cosine",
+    "epochs_run": 800,
+    "elapsed_s": 1.0,
+    "freeze_n": 1,
+    "lr": 0.0001,
+    "weight_decay": 0.0,
+    "use_scheduler": true,
+    "scheduler_T_max": 400,
+    "scheduler_eta_min": 5e-06,
+    "early_stop_metric": "r2",
+    "best_epoch": 800,
+    "best_metric": 0.868376,
+    "checkpoint_path": "multi_fidelity/models/high_fidelity/lian_v2_high_exp12_cosine.pth",
+    "hifi_train_path": "data/generated_yield_stress_data_20260327_135304.csv",
+    "eval_path": "data/high_fidelity/hifi_table6.csv",
+    "train_samples": 400,
+    "eval_samples": 16,
+    "frozen_params": 192,
+    "trainable_params": 8385,
+    "config": {
+      "freeze_n": 1,
+      "lr": 0.0001,
+      "epochs": 800,
+      "patience": 100,
+      "weight_decay": 0.0,
+      "use_scheduler": true,
+      "scheduler_T_max": 400,
+      "scheduler_eta_min": 5e-06,
+      "early_stop_metric": "r2",
+      "exp_tag": "exp12_cosine"
+    },
+    "train": {
+      "loss": 0.001428,
+      "r2": 0.9487,
+      "mae": 0.0451,
+      "mape": 9.22
+    },
+    "eval": {
+      "loss": 0.00699,
+      "r2": 0.8684,
+      "mae": 0.1166,
+      "mape": 18.06
     }
   }
 ]
