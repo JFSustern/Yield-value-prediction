@@ -1,0 +1,142 @@
+[
+  {
+    "tag": "B1_soft_pinn_lam0.001",
+    "timestamp": "2026-05-06 11:55",
+    "test_r2": -3.7608,
+    "test_mae": 0.5252,
+    "test_mape": 100.0,
+    "best_epoch": 1,
+    "elapsed_s": 0.2,
+    "note": "软约束λ=0.001，直接预测τ₀+φ_max"
+  },
+  {
+    "tag": "B1_soft_pinn_lam0.01",
+    "timestamp": "2026-05-06 11:55",
+    "test_r2": 0.6425,
+    "test_mae": 0.1115,
+    "test_mape": 22.87,
+    "best_epoch": 1000,
+    "elapsed_s": 0.6,
+    "note": "软约束λ=0.01，直接预测τ₀+φ_max"
+  },
+  {
+    "tag": "B1_soft_pinn_lam0.1",
+    "timestamp": "2026-05-06 11:55",
+    "test_r2": -3.7608,
+    "test_mae": 0.5252,
+    "test_mape": 100.0,
+    "best_epoch": 1,
+    "elapsed_s": 0.1,
+    "note": "软约束λ=0.1，直接预测τ₀+φ_max"
+  },
+  {
+    "tag": "B1_soft_pinn_lam1.0",
+    "timestamp": "2026-05-06 11:55",
+    "test_r2": 0.5784,
+    "test_mae": 0.1191,
+    "test_mape": 24.05,
+    "best_epoch": 1000,
+    "elapsed_s": 0.7,
+    "note": "软约束λ=1.0，直接预测τ₀+φ_max"
+  },
+  {
+    "tag": "B1_soft_pinn_lam10.0",
+    "timestamp": "2026-05-06 11:55",
+    "test_r2": -3.7608,
+    "test_mae": 0.5252,
+    "test_mape": 100.0,
+    "best_epoch": 1,
+    "elapsed_s": 0.1,
+    "note": "软约束λ=10.0，直接预测τ₀+φ_max"
+  },
+  {
+    "tag": "B1_soft_pinn_lam100.0",
+    "timestamp": "2026-05-06 11:55",
+    "test_r2": -3.7608,
+    "test_mae": 0.5252,
+    "test_mape": 100.0,
+    "best_epoch": 1,
+    "elapsed_s": 0.1,
+    "note": "软约束λ=100.0，直接预测τ₀+φ_max"
+  },
+  {
+    "tag": "B2_Meng_MFNN",
+    "timestamp": "2026-05-06 11:55",
+    "test_r2": -3.7608,
+    "test_mae": 0.5252,
+    "test_mape": 100.0,
+    "best_epoch": 1,
+    "elapsed_s": 0.1,
+    "note": "Meng 2020复合MFNN：输出空间建模低-高保真关联"
+  },
+  {
+    "tag": "B3_pure_MLP",
+    "timestamp": "2026-05-06 11:55",
+    "test_r2": 0.645,
+    "test_mae": 0.1111,
+    "test_mape": 22.76,
+    "best_epoch": 1000,
+    "elapsed_s": 0.6,
+    "note": "纯MLP：无物理约束，直接拟合"
+  },
+  {
+    "tag": "B4_hybrid_lam0.05",
+    "timestamp": "2026-05-06 11:55",
+    "test_r2": 0.7733,
+    "test_mae": 0.0812,
+    "test_mape": 15.86,
+    "best_epoch": 233,
+    "elapsed_s": 0.2,
+    "note": "硬约束+单调性软惩罚λ=0.05"
+  },
+  {
+    "tag": "B4_hybrid_lam0.5",
+    "timestamp": "2026-05-06 11:55",
+    "test_r2": 0.7666,
+    "test_mae": 0.0824,
+    "test_mape": 16.09,
+    "best_epoch": 254,
+    "elapsed_s": 0.3,
+    "note": "硬约束+单调性软惩罚λ=0.5"
+  },
+  {
+    "tag": "B5_progressive_unfreeze",
+    "timestamp": "2026-05-06 11:55",
+    "test_r2": 0.924,
+    "test_mae": 0.0518,
+    "test_mape": 10.59,
+    "best_epoch": 815,
+    "elapsed_s": 0.4,
+    "note": "渐进式解冻：4阶段逐步从输出层向输入层解冻"
+  },
+  {
+    "tag": "B6_mixed_training",
+    "timestamp": "2026-05-06 11:55",
+    "test_r2": 0.7642,
+    "test_mae": 0.0827,
+    "test_mape": 16.1,
+    "best_epoch": 207,
+    "elapsed_s": 0.6,
+    "note": "单阶段混合训练：LF+HF直接加权，λ_HF=10.0"
+  },
+  {
+    "tag": "B7_residual_mfnn",
+    "timestamp": "2026-05-06 11:55",
+    "test_r2": 0.8201,
+    "test_mae": 0.0679,
+    "test_mape": 12.36,
+    "best_epoch": 254,
+    "elapsed_s": 0.2,
+    "note": "数据驱动残差多保真：NN_LF预训练+冻结，NN_res学习残差，无物理约束"
+  },
+  {
+    "tag": "B8_soft_pinn_mf",
+    "timestamp": "2026-05-06 11:55",
+    "test_r2": 0.8493,
+    "test_mae": 0.0622,
+    "test_mape": 11.24,
+    "best_epoch": 71,
+    "elapsed_s": 0.1,
+    "note": "软约束PINN+多保真预训练，λ=0.01，与PI-MFNN唯一区别是约束方式"
+  }
+]

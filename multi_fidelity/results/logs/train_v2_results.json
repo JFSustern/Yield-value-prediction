@@ -309,5 +309,35 @@
       "mae": 0.1166,
       "mape": 18.06
     }
+  },
+  {
+    "phase": "hifi_only",
+    "timestamp": "2026-04-07 19:53",
+    "exp_tag": "exp13_hifi_only",
+    "epochs_run": 800,
+    "elapsed_s": 1.1,
+    "hidden_dim": 64,
+    "lr": 0.0001,
+    "weight_decay": 0.0,
+    "early_stop_metric": "r2",
+    "best_epoch": 800,
+    "best_metric": 0.744583,
+    "checkpoint_path": "multi_fidelity/models/high_fidelity/lian_v2_high_exp13_hifi_only.pth",
+    "hifi_train_path": "data/generated_yield_stress_data_20260327_135304.csv",
+    "eval_path": "data/high_fidelity/hifi_table6.csv",
+    "train_samples": 400,
+    "eval_samples": 16,
+    "train": {
+      "loss": 0.002609,
+      "r2": 0.8888,
+      "mae": 0.0607,
+      "mape": 11.04
+    },
+    "eval": {
+      "loss": 0.01151,
+      "r2": 0.7446,
+      "mae": 0.1508,
+      "mape": 21.25
+    }
   }
 ]

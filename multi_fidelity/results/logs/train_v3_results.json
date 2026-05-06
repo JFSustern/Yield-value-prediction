@@ -1,0 +1,80 @@
+[
+  {
+    "phase": "low_fidelity_v3",
+    "timestamp": "2026-04-23 11:17",
+    "epochs_run": 257,
+    "elapsed_s": 3.0,
+    "train_samples": 1600,
+    "test_samples": 400,
+    "train": {
+      "r2": 0.9668,
+      "mae": 0.0343,
+      "mape": 6.33
+    },
+    "test": {
+      "r2": 0.9742,
+      "mae": 0.0344,
+      "mape": 6.06
+    }
+  },
+  {
+    "phase": "multifidelity_v3",
+    "timestamp": "2026-04-23 11:17",
+    "exp_tag": "exp14_multifidelity_v3",
+    "epochs_run": 396,
+    "elapsed_s": 0.2,
+    "best_epoch": 246,
+    "best_eval_r2": 0.906945,
+    "freeze_n": 1,
+    "lr": 0.0001,
+    "weight_decay": 0.0,
+    "hifi_train_n": 30,
+    "hifi_eval_n": 10,
+    "hifi_test_n": 360,
+    "train": {
+      "r2": 0.924,
+      "mae": 0.0663,
+      "mape": 11.8
+    },
+    "eval": {
+      "r2": 0.9069,
+      "mae": 0.0471,
+      "mape": 8.48
+    },
+    "test": {
+      "r2": 0.9321,
+      "mae": 0.0496,
+      "mape": 10.06
+    }
+  },
+  {
+    "phase": "hifi_only_v3",
+    "timestamp": "2026-04-23 11:17",
+    "exp_tag": "exp15_hifi_only_v3",
+    "epochs_run": 418,
+    "elapsed_s": 0.3,
+    "best_epoch": 268,
+    "best_eval_r2": 0.923785,
+    "hidden_dim": 64,
+    "lr": 0.0001,
+    "weight_decay": 0.0,
+    "hifi_train_n": 30,
+    "hifi_eval_n": 10,
+    "hifi_test_n": 360,
+    "train": {
+      "r2": 0.7434,
+      "mae": 0.1102,
+      "mape": 19.61
+    },
+    "eval": {
+      "r2": 0.9238,
+      "mae": 0.0427,
+      "mape": 8.22
+    },
+    "test": {
+      "r2": 0.7697,
+      "mae": 0.0818,
+      "mape": 15.94
+    }
+  }
+]

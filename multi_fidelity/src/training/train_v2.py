@@ -491,6 +491,170 @@ def _plot_hifi_scatter(y_true, y_pred, freeze_n, exp_tag='', save_path=None):
 
 
 # ─────────────────────────────────────────────────────────
+# 实验13: 仅高保真数据从头训练 (对照组)
+# ─────────────────────────────────────────────────────────
+
+def train_hifi_only(
+    hifi_train_path = 'data/generated_yield_stress_data_20260327_135304.csv',
+    eval_path       = 'data/high_fidelity/hifi_table6.csv',
+    save_path       = 'multi_fidelity/models/high_fidelity/lian_v2_high.pth',
+    hidden_dim      = 64,
+    lr              = 1e-4,
+    epochs          = 800,
+    patience        = 100,
+    weight_decay    = 0.0,
+    early_stop_metric = 'r2',
+    exp_tag         = 'exp13_hifi_only',
+):
+    """
+    对照实验: 不做低保真预训练, 直接用高保真数据从头训练 LianPINN_v2,
+    在论文 Table 6 固定评估集上评估。
+    用于量化多保真策略相对于纯高保真训练的增益。
+    """
+    print("\n" + "="*60)
+    print(f"实验13: 仅高保真数据从头训练 (对照组)")
+    print(f"实验标签: {exp_tag}")
+    print("="*60)
+
+    if early_stop_metric not in {'loss', 'r2'}:
+        raise ValueError(f"Unsupported early_stop_metric: {early_stop_metric}")
+
+    exp_suffix = f"_{exp_tag}"
+    save_full = project_root / save_path
+    save_full = save_full.with_name(f"{save_full.stem}{exp_suffix}{save_full.suffix}")
+    os.makedirs(save_full.parent, exist_ok=True)
+
+    # 从头初始化模型，不加载任何预训练权重
+    model = LianPINN_v2(hidden_dim=hidden_dim)
+    total = sum(p.numel() for p in model.parameters())
+    print(f"模型参数量: {total:,}  hidden_dim={hidden_dim}  (随机初始化，无预训练)")
+
+    X_train, y_train, df_train = load_csv(project_root / hifi_train_path)
+    X_eval,  y_eval,  df_eval  = load_csv(project_root / eval_path)
+    print(f"\n高保真训练集: {len(X_train)} 样本")
+    print(f"  Phi:  {df_train.Phi.min():.3f}–{df_train.Phi.max():.3f}")
+    print(f"  SP%:  {df_train.SP_percent.min():.2f}–{df_train.SP_percent.max():.2f}")
+    print(f"  τ₀:   {df_train.Tau0_Pa.min():.3f}–{df_train.Tau0_Pa.max():.3f} Pa  均值={df_train.Tau0_Pa.mean():.3f}")
+    print(f"固定评估集: {len(X_eval)} 样本  (论文 Table 6)")
+    print(f"训练配置: lr={lr:.1e}, weight_decay={weight_decay:.1e}, "
+          f"epochs={epochs}, patience={patience}, early_stop_metric={early_stop_metric}")
+
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+
+    history = {'train_loss':[], 'eval_loss':[], 'eval_r2':[], 'eval_mae':[], 'lr':[]}
+    best_metric = float('inf') if early_stop_metric == 'loss' else float('-inf')
+    best_epoch = 0
+    wait = 0
+    t0 = time.time()
+
+    for ep in range(1, epochs + 1):
+        model.train()
+        optimizer.zero_grad()
+        pred, _ = model(X_train)
+        loss = log_mse(pred, y_train)
+        loss.backward()
+        optimizer.step()
+
+        ev_loss, ev_r2, ev_mae, ev_mape, _, _ = compute_metrics(model, X_eval, y_eval)
+        cur_lr = optimizer.param_groups[0]['lr']
+
+        history['train_loss'].append(loss.item())
+        history['eval_loss'].append(ev_loss)
+        history['eval_r2'].append(ev_r2)
+        history['eval_mae'].append(ev_mae)
+        history['lr'].append(cur_lr)
+
+        if ep % 100 == 0 or ep == 1:
+            print(f"Epoch {ep:3d}/{epochs} | "
+                  f"Train={loss.item():.5f} | Eval Loss={ev_loss:.5f} | "
+                  f"R²={ev_r2:.4f} | MAE={ev_mae:.4f} Pa")
+
+        current_metric = ev_loss if early_stop_metric == 'loss' else ev_r2
+        is_better = current_metric < best_metric if early_stop_metric == 'loss' else current_metric > best_metric
+
+        if is_better:
+            best_metric = current_metric
+            best_epoch = ep
+            wait = 0
+            torch.save({
+                'model_state_dict': model.state_dict(),
+                'history': history,
+                'best_epoch': best_epoch,
+                'best_metric': best_metric,
+                'exp_tag': exp_tag,
+            }, save_full)
+        else:
+            wait += 1
+            if wait >= patience:
+                print(f"Early stop at epoch {ep}")
+                break
+
+    elapsed = time.time() - t0
+
+    ckpt = torch.load(save_full, weights_only=False)
+    model.load_state_dict(ckpt['model_state_dict'])
+    tr_loss, tr_r2, tr_mae, tr_mape, tr_pred, tr_phi_max = compute_metrics(model, X_train, y_train)
+    ev_loss, ev_r2, ev_mae, ev_mape, ev_pred, ev_phi_max = compute_metrics(model, X_eval, y_eval)
+
+    result = {
+        'phase': 'hifi_only',
+        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M'),
+        'exp_tag': exp_tag,
+        'epochs_run': len(history['train_loss']),
+        'elapsed_s': round(elapsed, 1),
+        'hidden_dim': hidden_dim,
+        'lr': lr,
+        'weight_decay': weight_decay,
+        'early_stop_metric': early_stop_metric,
+        'best_epoch': ckpt['best_epoch'],
+        'best_metric': round(float(ckpt['best_metric']), 6),
+        'checkpoint_path': str(save_full.relative_to(project_root)),
+        'hifi_train_path': hifi_train_path,
+        'eval_path': eval_path,
+        'train_samples': len(X_train),
+        'eval_samples': len(X_eval),
+        'train': {'loss': round(tr_loss,6), 'r2': round(tr_r2,4),
+                  'mae': round(tr_mae,4), 'mape': round(tr_mape,2)},
+        'eval':  {'loss': round(ev_loss,6), 'r2': round(ev_r2,4),
+                  'mae': round(ev_mae,4), 'mape': round(ev_mape,2)},
+    }
+
+    print(f"\n{'─'*60}")
+    print(f"实验13完成  耗时 {elapsed:.1f}s  共 {result['epochs_run']} epochs")
+    print(f"最佳checkpoint: epoch {result['best_epoch']} | {early_stop_metric}={result['best_metric']:.6f}")
+    print(f"\n  结果 (论文 Table 6 评估集):")
+    print(f"  {'模型':<28} {'R²':>8} {'MAE':>10} {'MAPE':>8}")
+    print(f"  {'─'*58}")
+    print(f"  {'高保真训练集 (400条)':<28} {tr_r2:>8.4f} {tr_mae:>8.4f} Pa {tr_mape:>6.1f}%")
+    print(f"  {'论文评估集 (16条)':<28} {ev_r2:>8.4f} {ev_mae:>8.4f} Pa {ev_mape:>6.1f}%")
+    print(f"{'─'*60}")
+
+    # 逐样本对比
+    print(f"\n评估集逐样本对比:")
+    print(f"{'Phi':<8} {'SP%':<8} {'真实τ₀':<10} {'预测τ₀':<10} {'误差%':<8} {'φ_max预测'}")
+    print("-"*55)
+    for i in range(len(X_eval)):
+        phi    = X_eval[i,0].item()
+        sp     = X_eval[i,1].item()
+        true   = y_eval[i].item()
+        pred_i = ev_pred[i]
+        err    = abs(pred_i - true) / true * 100
+        print(f"{phi:.3f}    {sp:.2f}    {true:.4f}    {pred_i:.4f}    {err:.1f}%    {ev_phi_max[i]:.4f}")
+
+    _plot_hifi_training(
+        history, freeze_n=0, lr=lr, exp_tag=exp_tag,
+        early_stop_metric=early_stop_metric,
+        save_path=RESULTS_DIR / f'plots/lian_v2_high{exp_suffix}_training.png',
+    )
+    _plot_hifi_scatter(
+        y_eval.numpy(), ev_pred, freeze_n=0, exp_tag=exp_tag,
+        save_path=RESULTS_DIR / f'plots/lian_v2_high{exp_suffix}_scatter.png',
+    )
+
+    return model, result
+
+
+# ─────────────────────────────────────────────────────────
 # 主流程
 # ─────────────────────────────────────────────────────────
 
@@ -587,3 +751,28 @@ if __name__ == '__main__':
     # 若后续需要追加最佳组合实验：仅当新实验明显优于当前基线时再启用
     # 推荐组合: small lr + weight decay + cosine + r2 early stop
     # 当前先不自动执行，避免在未见明显增益时继续发散。
+
+    # 实验13: 仅高保真数据从头训练 (对照组，量化多保真策略增益)
+    _, exp13_result = train_hifi_only()
+    all_results.append(exp13_result)
+
+    # 更新 JSON (含实验13)
+    with open(result_path, 'w', encoding='utf-8') as f:
+        json.dump(all_results, f, ensure_ascii=False, indent=2)
+    print(f"\n实验13结果已追加至: {result_path}")
+
+    # 打印多保真 vs 纯高保真对照
+    best_mf = max(
+        [r for r in all_results if r.get('phase') == 'high_fidelity'],
+        key=lambda item: item['eval']['r2'],
+        default=None,
+    )
+    if best_mf and exp13_result:
+        print("\n多保真最优 vs 纯高保真对照:")
+        print(f"  多保真最优 ({best_mf['exp_tag']}): "
+              f"R²={best_mf['eval']['r2']:.4f}, MAE={best_mf['eval']['mae']:.4f} Pa")
+        print(f"  纯高保真 ({exp13_result['exp_tag']}): "
+              f"R²={exp13_result['eval']['r2']:.4f}, MAE={exp13_result['eval']['mae']:.4f} Pa")
+        r2_gain  = best_mf['eval']['r2']  - exp13_result['eval']['r2']
+        mae_gain = exp13_result['eval']['mae'] - best_mf['eval']['mae']
+        print(f"  多保真增益: R² +{r2_gain:.4f}, MAE -{mae_gain:.4f} Pa")
