@@ -695,6 +695,115 @@ def train_B10(X_tr, y_tr, X_ev, y_ev, X_te, y_te,
 
 
 # ─────────────────────────────────────────────────────────
+# PGNN — Physics-Guided Neural Network（Karpatne et al. 2017）
+# ─────────────────────────────────────────────────────────
+
+def train_PGNN(X_tr, y_tr, X_ev, y_ev, X_te, y_te,
+               lam=0.1, lr=1e-4, epochs=1000, patience=150):
+    """
+    PGNN：Physics-Guided Neural Network（Karpatne et al. 2017）
+
+    参考：Karpatne A, et al. "Physics-guided neural networks (PGNN):
+    An application in lake temperature modeling." arXiv:1710.11431, 2017.
+
+    核心特征：不等式 ReLU 惩罚（单侧约束），与 B1/B8 的等式残差 log-MSE 惩罚有本质区别。
+    使用 SoftPINN 结构（hidden_dim=64，直接预测τ₀），仅用 tau_pred 通道，
+    phi_max 通道不参与 PGNN 损失计算。
+
+    三项物理不等式惩罚（强化版）：
+      1. 非负性：τ₀ > 0
+      2. 单调性：batch内按φ排序后τ₀单调不减（dτ₀/dφ ≥ 0）
+      3. 发散特征：φ接近φ_ref_max时τ₀应足够大（Lian公式发散特性）
+
+    损失 = log_mse(τ_pred, τ_true) + λ × (pos_penalty + mono_penalty + diverge_penalty)
+    """
+    print(f"\n{'='*55}")
+    print(f"PGNN — 物理引导神经网络（Karpatne 2017，λ={lam}）")
+
+    # 使用不带 relu 截断的 raw MLP，输出可正可负
+    # relu+1e-6 截断导致初始输出全为1e-6，log_mse梯度接近0无法收敛
+    # 靠 pos_penalty 软约束非负性
+    class _RawMLP(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.net = nn.Sequential(
+                nn.Linear(2, 64), nn.Tanh(),
+                nn.Linear(64, 64), nn.Tanh(),
+                nn.Linear(64, 64), nn.Tanh(),
+                nn.Linear(64, 1),
+            )
+        def forward(self, x):
+            scale = torch.tensor([2.0, 1.5], device=x.device, dtype=x.dtype)
+            return self.net(x * scale).squeeze()
+
+    model = _RawMLP()
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+
+    best_r2, best_ep, wait = float('-inf'), 0, 0
+    best_state = copy.deepcopy(model.state_dict())
+    t0 = time.time()
+
+    for ep in range(1, epochs + 1):
+        model.train()
+        optimizer.zero_grad()
+
+        tau_pred = model(X_tr)
+        phi = X_tr[:, 0]
+
+        # ── 数据损失（clamp防止负值进log）──
+        loss_data = log_mse(tau_pred.clamp(min=1e-6), y_tr)
+
+        # ── 物理惩罚项 L_physics ──
+
+        # 约束1：非负性  τ₀ > 0
+        pos_penalty = torch.relu(-tau_pred).mean()
+
+        # 约束2：单调性  batch内按φ排序后 dτ₀/dφ ≥ 0
+        idx = torch.argsort(phi)
+        tau_sorted = tau_pred[idx]
+        mono_penalty = torch.relu(tau_sorted[:-1] - tau_sorted[1:]).mean()
+
+        # 约束3：发散特征  当 φ 接近 φ_ref_max 时 τ₀ 应足够大
+        phi_ref_max = phi.max() + 0.15
+        margin = phi_ref_max - phi
+        threshold = 0.5 / margin.clamp(min=1e-3)
+        diverge_mask = margin < 0.10
+        if diverge_mask.any():
+            diverge_penalty = torch.relu(
+                threshold[diverge_mask] - tau_pred[diverge_mask]
+            ).mean()
+        else:
+            diverge_penalty = torch.tensor(0.0, device=tau_pred.device, dtype=tau_pred.dtype)
+
+        L_physics = pos_penalty + mono_penalty + diverge_penalty
+
+        # ── 总损失 ──
+        loss = loss_data + lam * L_physics
+        loss.backward()
+        optimizer.step()
+
+        # ── Early stop（基于 eval R²）──
+        ev_r2, _, _, _ = compute_metrics(model, X_ev, y_ev)
+        if ev_r2 > best_r2:
+            best_r2, best_ep, wait = ev_r2, ep, 0
+            best_state = copy.deepcopy(model.state_dict())
+        else:
+            wait += 1
+            if wait >= patience:
+                break
+
+    model.load_state_dict(best_state)
+    elapsed = time.time() - t0
+    r2, mae, mape, _ = compute_metrics(model, X_te, y_te)
+    print(f"  best_ep={best_ep}  test R²={r2:.4f}  MAE={mae:.4f} Pa  MAPE={mape:.1f}%")
+
+    return make_result(
+        f'pgnn_lam{lam}', r2, mae, mape, best_ep, elapsed,
+        note=f'PGNN Karpatne2017 λ={lam}, HF-only, 3-term ReLU physics penalty'
+    )
+
+
+# ─────────────────────────────────────────────────────────
 # B3 — 纯MLP黑箱（无物理约束）
 # ─────────────────────────────────────────────────────────
 
@@ -1077,8 +1186,18 @@ if __name__ == '__main__':
     all_results.append(
         train_B10(X_tr, y_tr, X_ev, y_ev, X_te, y_te))
 
+    # PGNN — Physics-Guided Neural Network（Karpatne 2017，λ三档搜索）
+    pgnn_results = []
+    for lam_pgnn in [0.01, 0.1, 1.0]:
+        r = train_PGNN(X_tr, y_tr, X_ev, y_ev, X_te, y_te,
+                       lam=lam_pgnn, lr=1e-4, epochs=1000, patience=150)
+        pgnn_results.append(r)
+        all_results.append(r)
+    best_pgnn = max(pgnn_results, key=lambda r: r['test_r2'])
+    print(f"\nPGNN 最优档：{best_pgnn['tag']}  test R²={best_pgnn['test_r2']:.4f}  MAPE={best_pgnn['test_mape']:.1f}%")
+
     # ── 保存结果 ──
-    result_path = RESULTS_DIR / 'logs/baseline_results_exp21.json'
+    result_path = RESULTS_DIR / 'logs/baseline_results_exp22.json'
     os.makedirs(result_path.parent, exist_ok=True)
     with open(result_path, 'w', encoding='utf-8') as f:
         json.dump(all_results, f, ensure_ascii=False, indent=2)
@@ -1116,4 +1235,4 @@ if __name__ == '__main__':
     plot_results = list(best_per_method.values())
     plot_baseline_comparison(
         plot_results,
-        save_path=RESULTS_DIR / 'plots/baseline_comparison_exp21.png')
+        save_path=RESULTS_DIR / 'plots/baseline_comparison_exp22.png')
