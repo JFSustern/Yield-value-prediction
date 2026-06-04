@@ -1,0 +1,44 @@
+{
+  "system": "Zhou1999_Al2O3",
+  "equation": "tau = m1_eff * phi*(phi-phi0)^2 / [phi_max*(phi_max-phi)]",
+  "phi_max_fixed": 0.57,
+  "phi0_fixed": 0.026,
+  "hf_train_n": 30,
+  "test_n": 10,
+  "elapsed_s": 6.9,
+  "strategies": {
+    "A_physics": {
+      "label": "A_physics",
+      "R2": 0.46088075637817383,
+      "MAE": 266.0388488769531,
+      "MAPE": 55.27743148803711,
+      "m1_fixed": 747.0
+    },
+    "B_lf_only": {
+      "label": "B_lf_only",
+      "R2": 0.9247574210166931,
+      "MAE": 93.08543395996094,
+      "MAPE": 30.295080184936523,
+      "lf_pretrain_R2": 0.986335039138794
+    },
+    "C_hf_only": {
+      "label": "C_hf_only",
+      "R2": 0.8504415154457092,
+      "MAE": 131.7600555419922,
+      "MAPE": 17.571352005004883,
+      "best_epoch": 423
+    },
+    "D_mfnn": {
+      "label": "D_mfnn",
+      "R2": 0.9628475904464722,
+      "MAE": 67.02316284179688,
+      "MAPE": 10.91939926147461,
+      "best_epoch": 243,
+      "lf_pretrain_R2": 0.986335039138794,
+      "freeze_n": 1
+    }
+  },
+  "mf_gain_R2": 0.1124,
+  "mf_gain_MAPE": -6.7,
+  "note": "HF data: estimated digitization of Zhou 1999 Fig.1. Replace with WebPlotDigitizer results before publication."
+}
