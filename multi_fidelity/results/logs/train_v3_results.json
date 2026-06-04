@@ -1,30 +1,30 @@
 [
   {
     "phase": "low_fidelity_v3",
-    "timestamp": "2026-04-23 11:17",
-    "epochs_run": 257,
-    "elapsed_s": 3.0,
+    "timestamp": "2026-05-18 11:45",
+    "epochs_run": 253,
+    "elapsed_s": 2.9,
     "train_samples": 1600,
     "test_samples": 400,
     "train": {
-      "r2": 0.9668,
-      "mae": 0.0343,
-      "mape": 6.33
+      "r2": 0.967,
+      "mae": 0.0346,
+      "mape": 6.49
     },
     "test": {
-      "r2": 0.9742,
-      "mae": 0.0344,
-      "mape": 6.06
+      "r2": 0.974,
+      "mae": 0.0342,
+      "mape": 6.03
     }
   },
   {
     "phase": "multifidelity_v3",
-    "timestamp": "2026-04-23 11:17",
+    "timestamp": "2026-05-18 11:45",
     "exp_tag": "exp14_multifidelity_v3",
-    "epochs_run": 396,
-    "elapsed_s": 0.2,
-    "best_epoch": 246,
-    "best_eval_r2": 0.906945,
+    "epochs_run": 414,
+    "elapsed_s": 0.8,
+    "best_epoch": 264,
+    "best_eval_r2": 0.9107,
     "freeze_n": 1,
     "lr": 0.0001,
     "weight_decay": 0.0,
@@ -32,29 +32,29 @@
     "hifi_eval_n": 10,
     "hifi_test_n": 360,
     "train": {
-      "r2": 0.924,
-      "mae": 0.0663,
-      "mape": 11.8
+      "r2": 0.9249,
+      "mae": 0.0657,
+      "mape": 11.65
     },
     "eval": {
-      "r2": 0.9069,
-      "mae": 0.0471,
-      "mape": 8.48
+      "r2": 0.9107,
+      "mae": 0.0448,
+      "mape": 8.08
     },
     "test": {
-      "r2": 0.9321,
-      "mae": 0.0496,
-      "mape": 10.06
+      "r2": 0.9279,
+      "mae": 0.0508,
+      "mape": 10.21
     }
   },
   {
     "phase": "hifi_only_v3",
-    "timestamp": "2026-04-23 11:17",
+    "timestamp": "2026-05-18 11:45",
     "exp_tag": "exp15_hifi_only_v3",
-    "epochs_run": 418,
-    "elapsed_s": 0.3,
-    "best_epoch": 268,
-    "best_eval_r2": 0.923785,
+    "epochs_run": 377,
+    "elapsed_s": 0.7,
+    "best_epoch": 227,
+    "best_eval_r2": 0.923853,
     "hidden_dim": 64,
     "lr": 0.0001,
     "weight_decay": 0.0,
@@ -62,19 +62,19 @@
     "hifi_eval_n": 10,
     "hifi_test_n": 360,
     "train": {
-      "r2": 0.7434,
-      "mae": 0.1102,
-      "mape": 19.61
+      "r2": 0.747,
+      "mae": 0.1093,
+      "mape": 19.48
     },
     "eval": {
-      "r2": 0.9238,
+      "r2": 0.9239,
       "mae": 0.0427,
-      "mape": 8.22
+      "mape": 8.2
     },
     "test": {
-      "r2": 0.7697,
-      "mae": 0.0818,
-      "mape": 15.94
+      "r2": 0.7722,
+      "mae": 0.0815,
+      "mape": 15.89
     }
   }
 ]
