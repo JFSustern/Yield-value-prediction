@@ -54,7 +54,6 @@ FEATURES   = ['phi', 'd_s_um']
 TARGET     = 'tau_Pa'
 SEED       = 42
 HF_TRAIN_N = 30
-HF_EVAL_N  = 10
 
 # 策略 A 用固定 m₁ 均值 (各粉末 m₁ 的简单平均)
 M1_FIXED_MEAN = 747.0    # (310+470+830+1380)/4 ≈ 747 Pa
@@ -72,7 +71,7 @@ def log_mse(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
 def compute_metrics(model, X, y):
     model.eval()
     with torch.no_grad():
-        pred, m1 = model(X)
+        pred, _ = model(X)
         r2   = (1 - torch.sum((y - pred)**2) / torch.sum((y - y.mean())**2)).item()
         mae  = torch.mean(torch.abs(pred - y)).item()
         mape = (torch.mean(torch.abs((pred - y) / (y + 1e-6))) * 100).item()

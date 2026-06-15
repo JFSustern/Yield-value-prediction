@@ -44,7 +44,6 @@ class LianPINN_v2(nn.Module):
             phi_max_pred: [batch]  预测最大堆积分数
         """
         phi = x[:, 0]
-        sp  = x[:, 1]
 
         # 输入归一化 (基于 Table 6 典型值: Phi~0.48, SP~0.6)
         scale = torch.tensor([2.0, 1.5], device=x.device, dtype=x.dtype)

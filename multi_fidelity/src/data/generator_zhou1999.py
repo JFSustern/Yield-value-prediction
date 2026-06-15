@@ -38,6 +38,8 @@ Zhou 1999 Al₂O₃ 悬浮液数据生成器
 """
 
 import os
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
@@ -112,7 +114,7 @@ def build_hf_digitized(seed: int = 42) -> pd.DataFrame:
         m1  = pinfo['m1']
         for phi in phi_points[pname]:
             tau_true = tau_yodel_full(phi, m1)
-            if tau_true is np.nan or np.isnan(tau_true):
+            if np.isnan(tau_true):
                 continue
             # 模拟 Vane 法测量噪声 (±12%, log-normal 分布)
             noise = rng.lognormal(mean=0, sigma=0.12)
@@ -203,7 +205,7 @@ def generate_lf(n_target: int = 2000,
             continue
 
         tau = tau_yodel_full(phi, m1)
-        if tau is np.nan or np.isnan(tau) or not (1.0 <= tau <= 12000.0):
+        if np.isnan(tau) or not (1.0 <= tau <= 12000.0):
             continue
 
         records.append({
@@ -238,8 +240,9 @@ def generate_lf(n_target: int = 2000,
 # ── 入口 ────────────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    os.chdir(root)
+    # Keep generated data under Project/data regardless of the caller's cwd.
+    project_root = Path(__file__).resolve().parents[3]
+    os.chdir(project_root)
 
     print('生成 Zhou 1999 体系数据集 ...\n')
 

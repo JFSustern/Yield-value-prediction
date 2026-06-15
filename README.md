@@ -1,90 +1,120 @@
-# PI-MFNN — Physics-Informed Multi-Fidelity Neural Network
+# PI-MFNN 屈服应力预测
 
-> 论文：《基于物理信息多保真神经网络的浓悬浮液屈服应力预测：硬约束架构与跨体系通用性》
+本仓库实现了一个物理硬约束的多保真神经网络（PI-MFNN），用于浓悬浮液/水泥浆体屈服应力预测。当前研究包含两个验证体系：
 
----
+| 体系 | 输入 | 网络反演量 | 物理约束层 |
+|---|---|---|---|
+| Lian 2025 水泥浆体 | `Phi`, `SP_percent` | 最大堆积分数 `phi_max` | `tau = m1 * phi^3 / [phi_max * (phi_max - phi)]` |
+| Zhou 1999 Al2O3 悬浮液 | `phi`, `d_s_um` | 颗粒间力参数 `m1_eff` | 完整 YODEL 方程 |
+
+> 当前仓库是研究实验代码，不是 Web 服务。未来 Agent 的需求草案见
+> `docs/agent-requirements.md`，该功能尚未实现。
+
+## 快速开始
+
+建议使用 Python 3.9-3.12。训练依赖 PyTorch、NumPy、Pandas 和 Matplotlib。
+
+```bash
+cd /path/to/Project
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
+运行 Lian 2025 主实验（30 条训练、10 条评估、360 条测试）：
+
+```bash
+python -m multi_fidelity.src.training.train_v3
+```
+
+运行 Zhou 1999 四策略实验与多方法基线：
+
+```bash
+python -m multi_fidelity.src.training.run_zhou1999_experiment
+python -m multi_fidelity.src.training.run_zhou1999_baselines
+```
+
+运行 Lian 2025 多随机种子实验：
+
+```bash
+python run_multiseed.py
+```
+
+训练命令会更新 `multi_fidelity/models/` 下的权重，并在
+`multi_fidelity/results/` 下生成日志和图片。需要保留历史结果时，请在运行前另存输出目录或提交当前权重。
 
 ## 项目结构
 
-```
+```text
 Project/
-├── data/
-│   ├── high_fidelity/             # Lian 2025 体系：真实 HF 测量数据
-│   ├── synthetic_table6_v2/       # Lian 2025 体系：LF 合成数据 (2000条)
-│   ├── v3_split_seed42/           # Lian 2025 体系：HF train/eval/test 划分
-│   ├── zhou1999_lf/               # Zhou 1999 体系：LF 合成数据 (2000条)
-│   └── zhou1999_hf/               # Zhou 1999 体系：HF 数字化实验数据 (50条)
-│
+├── data/                           # 训练、评估和测试 CSV
+│   ├── high_fidelity/              # Lian 体系原始/扩展数据及划分
+│   ├── synthetic_table6_v2/        # Lian 体系低保真合成数据
+│   ├── zhou1999_hf/                # Zhou 体系 HF 工作数据及划分
+│   └── zhou1999_lf/                # Zhou 体系低保真合成数据
 ├── multi_fidelity/
 │   ├── src/
-│   │   ├── model/
-│   │   │   ├── pinn_lian2025_v2.py   # Lian 2025 主模型（NPE→φ_max）
-│   │   │   ├── pinn_lian2025_v3.py   # 可配置版（架构搜索用）
-│   │   │   └── pinn_zhou1999_v1.py   # Zhou 1999 主模型（NPE→m₁_eff）
-│   │   ├── physics/
-│   │   │   └── lian2025.py           # Lian 2025 物理方程
-│   │   ├── data/
-│   │   │   ├── generator_lian2025.py # Lian 2025 LF 数据生成器
-│   │   │   └── generator_zhou1999.py # Zhou 1999 LF+HF 数据生成器
-│   │   └── training/
-│   │       ├── train_v3.py                  # Lian 2025 体系主实验
-│   │       └── run_zhou1999_experiment.py   # Zhou 1999 体系跨体系验证
-│   │
-│   ├── models/
-│   │   ├── low_fidelity/lian_v3_low.pth           # LF 预训练
-│   │   └── high_fidelity/
-│   │       ├── lian_v3_hifi_only.pth              # 纯 HF 基线
-│   │       └── lian_v3_multifidelity.pth          # PI-MFNN 最终模型 ★
-│   │
-│   └── results/zhou1999_exp/      # Zhou 1999 实验结果
-│
-└── docs/README.md
+│   │   ├── data/                   # 数据生成器
+│   │   ├── model/                  # Lian/Zhou 物理硬约束模型
+│   │   ├── physics/                # 独立物理公式
+│   │   └── training/               # 训练、消融和基线实验
+│   ├── models/                     # 当前参考模型权重
+│   └── results/                    # 当前参考结果和运行生成物
+├── docs/                           # 数据说明和后续需求草案
+├── paper/                          # 论文参考材料，不参与代码运行
+├── run_multiseed.py                # Lian 多种子鲁棒性实验
+└── requirements.txt
 ```
 
----
+## 常用实验
 
-## 两个验证体系
-
-| 体系 | 物理方程 | NPE 反演隐变量 | HF 数据 |
-|------|---------|--------------|---------|
-| **Lian 2025（水泥浆）** | `τ = m₁φ³/[φ_max(φ_max-φ)]` | φ_max（最大堆积分数） | 作者自有真实测量 |
-| **Zhou 1999（Al₂O₃陶瓷）** | `τ = m₁_eff·φ(φ-φ₀)²/[φ_max(φ_max-φ)]` | m₁_eff（颗粒间力参数） | Zhou 1999 实验数字化 |
-
----
-
-## 快速运行
+`train_v3` 使用一个位置参数选择实验：
 
 ```bash
-# 环境：Python 3.9+, PyTorch 2.x
-conda activate pytorch
-
-# Lian 2025 主实验
-cd /path/to/Project
-python -m multi_fidelity.src.training.train_v3
-
-# Zhou 1999 跨体系验证
-python -m multi_fidelity.src.training.run_zhou1999_experiment \
-    --lf-data data/zhou1999_lf \
-    --hf-data data/zhou1999_hf \
-    --out-dir multi_fidelity/results/zhou1999_exp
-
-# 重新生成论文数据（需先运行 train_v3）
-python /path/to/paper/latex/scripts/make_nature_figures.py
+python -m multi_fidelity.src.training.train_v3 main        # 默认主实验
+python -m multi_fidelity.src.training.train_v3 arch        # 网络架构搜索
+python -m multi_fidelity.src.training.train_v3 hparam      # 微调超参搜索
+python -m multi_fidelity.src.training.train_v3 ablation    # 四策略消融
+python -m multi_fidelity.src.training.train_v3 sufficient  # 320 条 HF 训练对比
 ```
 
----
+重新生成低保真数据：
 
-## 关键结果（seed=42，30条HF训练）
+```bash
+python -m multi_fidelity.src.data.generator_lian2025
+python -m multi_fidelity.src.data.generator_zhou1999
+```
 
-| 体系 | 纯HF MAPE | PI-MFNN MAPE | 多保真增益 |
-|------|---------|-------------|---------|
-| Lian 2025 | 15.9% | **10.2%** (R²=0.928) | −5.7 pp |
-| Zhou 1999 | 17.6% | **10.9%** (R²=0.963) | −6.7 pp |
+以上生成器会覆盖对应目录中的 CSV，请先确认是否需要保留现有数据。
 
----
+## 核心代码
+
+- `multi_fidelity/src/model/pinn_lian2025_v2.py`：Lian 主模型，网络预测 `phi_max`，物理层计算 `tau0`。
+- `multi_fidelity/src/model/pinn_lian2025_v3.py`：可配置宽度、深度和激活函数的架构搜索模型。
+- `multi_fidelity/src/model/pinn_zhou1999_v1.py`：Zhou/YODEL 硬约束模型，网络预测 `m1_eff`。
+- `multi_fidelity/src/training/train_v3.py`：Lian 训练、架构搜索、超参搜索、消融和充足数据实验。
+- `multi_fidelity/src/training/run_zhou1999_experiment.py`：Zhou 四策略对比。
+- `multi_fidelity/src/training/run_zhou1999_baselines.py`：Zhou 多方法基线对比。
+
+## 数据与结果口径
+
+详细字段、样本数和来源风险见 `docs/README.md`。交接时尤其注意：
+
+1. `data/high_fidelity/hifi_table6.csv` 有 16 条整理后的 Table 6 记录。
+2. `data/high_fidelity/hf_all400.csv` 是当前 Lian 实验使用的 400 条工作数据；交付前应补充其扩展/生成过程和审核记录。
+3. `data/zhou1999_hf/` 当前数据由论文图形视觉估算、YODEL 标定和噪声模拟构成，不能直接表述为精确数字化的原始实验数据。
+4. `multi_fidelity/results/multiseed_results.json` 是已有实验产物；随机种子逻辑已修正，正式引用前应重新运行 `run_multiseed.py`。
+
+## 交接检查
+
+- 从仓库根目录执行命令，避免相对路径写入错误位置。
+- 确认 Python 和 PyTorch 版本后再重训；模型权重由 `state_dict` 加载。
+- 不要把测试集用于早停或超参选择；当前脚本使用独立 `eval` 集早停。
+- 正式发表前重新核验数据来源、随机种子结果和结果 JSON。
+- Git 工作区可能包含新训练权重和未提交实验数据，提交前逐项确认，不要批量丢弃。
 
 ## 参考文献
 
-- Lian et al. (2025). *Materials* 18, 2983. DOI: 10.3390/ma18132983
-- Flatt & Bowen (2006). *J. Am. Ceram. Soc.* 89(4): 1244–1256. DOI: 10.1111/j.1551-2916.2005.00888.x
-- Zhou et al. (1999). *J. Rheol.* 43(3): 651–71. DOI: 10.1122/1.551029
+- Lian et al. (2025), *Materials* 18, 2983. DOI: `10.3390/ma18132983`
+- Flatt and Bowen (2006), *Journal of the American Ceramic Society* 89(4), 1244-1256. DOI: `10.1111/j.1551-2916.2005.00888.x`
+- Zhou et al. (1999), *Journal of Rheology* 43(3), 651-671. DOI: `10.1122/1.551029`

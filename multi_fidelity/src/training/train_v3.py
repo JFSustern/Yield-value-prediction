@@ -17,6 +17,7 @@
   固定: m1 = 0.72 Pa
 """
 
+import argparse
 import os
 import sys
 import time
@@ -41,9 +42,30 @@ from multi_fidelity.src.model.pinn_lian2025_v3 import LianPINN_v3
 FEATURES = ['Phi', 'SP_percent']
 TARGET   = 'Tau0_Pa'
 RESULTS_DIR = project_root / 'multi_fidelity/results'
+HIFI_DATA_PATH = 'data/high_fidelity/hf_all400.csv'
 
 # 随机种子，保证实验可复现
 RANDOM_SEED = 42
+CLI_MODES = ('main', 'arch', 'hparam', 'ablation', 'sufficient')
+
+
+def _parse_cli_mode():
+    """Parse the single experiment selector used by this research script."""
+    parser = argparse.ArgumentParser(
+        description='Lian 2025 PI-MFNN training and comparison experiments',
+    )
+    parser.add_argument(
+        'mode',
+        nargs='?',
+        choices=CLI_MODES,
+        default='main',
+        help='main: 主实验；arch: 架构搜索；hparam: 超参搜索；'
+             'ablation: 消融；sufficient: 充足数据对比',
+    )
+    return parser.parse_args().mode
+
+
+CLI_MODE = _parse_cli_mode() if __name__ == '__main__' else None
 
 
 # ─────────────────────────────────────────────────────────
@@ -52,6 +74,13 @@ RANDOM_SEED = 42
 
 def log_mse(pred, target):
     return torch.mean((torch.log1p(pred) - torch.log1p(target)) ** 2)
+
+
+def set_seed(seed=RANDOM_SEED):
+    """Fix NumPy and PyTorch RNGs so reported experiments are reproducible."""
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
 
 def compute_metrics(model, X, y):
     model.eval()
@@ -136,7 +165,9 @@ def train_low_fidelity(
     epochs     = 500,
     batch_size = 64,
     patience   = 50,
+    seed       = RANDOM_SEED,
 ):
+    set_seed(seed)
     print("\n" + "="*60)
     print("Phase 1: 低保真度训练 (合成数据)")
     print("="*60)
@@ -248,12 +279,14 @@ def train_multifidelity_v3(
     patience    = 150,
     weight_decay = 0.0,
     exp_tag     = 'exp14_multifidelity_v3',
+    seed        = RANDOM_SEED,
 ):
     """
     实验 14: 多保真策略 v3
     低保真预训练权重 → 冻结前 freeze_n 层 → 在少量高保真数据上微调
     使用高保真评估集做 early stop，最终在高保真测试集上报告
     """
+    set_seed(seed)
     print("\n" + "="*60)
     print(f"实验 14: 多保真 v3 (低保真预训练 + {len(y_hifi_train)} 条高保真微调)")
     print(f"实验标签: {exp_tag}")
@@ -395,12 +428,14 @@ def train_hifi_only_v3(
     patience    = 150,
     weight_decay = 0.0,
     exp_tag     = 'exp15_hifi_only_v3',
+    seed        = RANDOM_SEED,
 ):
     """
     实验 15: 纯高保真对照组 v3
     随机初始化，直接在少量高保真数据上训练
     使用高保真评估集做 early stop，最终在高保真测试集上报告
     """
+    set_seed(seed)
     print("\n" + "="*60)
     print(f"实验 15: 纯高保真 v3 (随机初始化 + {len(y_hifi_train)} 条高保真训练)")
     print(f"实验标签: {exp_tag}")
@@ -588,12 +623,12 @@ def _plot_comparison(results_list, save_path):
 # 主流程
 # ─────────────────────────────────────────────────────────
 
-if __name__ == '__main__':
+if CLI_MODE == 'main':
     print("\n" + "="*60)
     print("v3 实验: 验证真实小样本场景下多保真策略的价值")
     print("="*60)
 
-    hifi_path = 'data/generated_yield_stress_data_20260327_135304.csv'
+    hifi_path = HIFI_DATA_PATH
 
     # 数据划分 (固定 seed=42，保证可复现)
     (X_tr, y_tr, _), (X_ev, y_ev, _), (X_te, y_te, _) = split_hifi_data(
@@ -822,22 +857,17 @@ def _transfer_weights(src_model, dst_model):
           f"({transferred/total_dst*100:.1f}%)")
 
 
-if __name__ == '__arch_search__':
-    pass  # 架构搜索入口在下面的 arch_search 块中
-
-
 # ─────────────────────────────────────────────────────────
-# 架构搜索入口 (独立运行: python train_v3.py arch)
+# 架构搜索入口 (python -m multi_fidelity.src.training.train_v3 arch)
 # ─────────────────────────────────────────────────────────
 
-import sys as _sys
-if __name__ == '__main__' and len(_sys.argv) > 1 and _sys.argv[1] == 'arch':
+if CLI_MODE == 'arch':
 
     print("\n" + "="*60)
     print("实验 16: 多保真 v3 架构搜索")
     print("="*60)
 
-    hifi_path = 'data/generated_yield_stress_data_20260327_135304.csv'
+    hifi_path = HIFI_DATA_PATH
 
     (X_tr, y_tr, _), (X_ev, y_ev, _), (X_te, y_te, _) = split_hifi_data(
         project_root / hifi_path, n_train=30, n_eval=10, seed=RANDOM_SEED,
@@ -1019,16 +1049,16 @@ def train_hparam_search(
 
 
 # ─────────────────────────────────────────────────────────
-# 超参搜索入口 (python train_v3.py hparam)
+# 超参搜索入口 (python -m multi_fidelity.src.training.train_v3 hparam)
 # ─────────────────────────────────────────────────────────
 
-if __name__ == '__main__' and len(_sys.argv) > 1 and _sys.argv[1] == 'hparam':
+if CLI_MODE == 'hparam':
 
     print("\n" + "="*60)
     print("实验 17: 多保真 v3 超参搜索 (freeze_n × lr × weight_decay)")
     print("="*60)
 
-    hifi_path = 'data/generated_yield_stress_data_20260327_135304.csv'
+    hifi_path = HIFI_DATA_PATH
 
     (X_tr, y_tr, _), (X_ev, y_ev, _), (X_te, y_te, _) = split_hifi_data(
         project_root / hifi_path, n_train=30, n_eval=10, seed=RANDOM_SEED,
@@ -1255,16 +1285,16 @@ def _plot_ablation(y_true, groups, save_path):
 
 
 # ─────────────────────────────────────────────────────────
-# 消融实验入口 (python train_v3.py ablation)
+# 消融实验入口 (python -m multi_fidelity.src.training.train_v3 ablation)
 # ─────────────────────────────────────────────────────────
 
-if __name__ == '__main__' and len(_sys.argv) > 1 and _sys.argv[1] == 'ablation':
+if CLI_MODE == 'ablation':
 
     print("\n" + "="*60)
     print("实验 18: 消融实验 — 四种策略在测试集上的对比")
     print("="*60)
 
-    hifi_path = 'data/generated_yield_stress_data_20260327_135304.csv'
+    hifi_path = HIFI_DATA_PATH
 
     (X_tr, y_tr, _), (X_ev, y_ev, _), (X_te, y_te, _) = split_hifi_data(
         project_root / hifi_path, n_train=30, n_eval=10, seed=RANDOM_SEED,
@@ -1293,3 +1323,63 @@ if __name__ == '__main__' and len(_sys.argv) > 1 and _sys.argv[1] == 'ablation':
     gain_mf_vs_low  = groups[3]['r2'] - groups[1]['r2']
     print(f"\n多保真 vs 纯高保真增益: R² +{gain_mf_vs_hifi:.4f}")
     print(f"多保真 vs 纯低保真增益: R² +{gain_mf_vs_low:.4f}")
+
+
+# ─────────────────────────────────────────────────────────
+# 补充对比：数据量充足场景
+# 运行: python -m multi_fidelity.src.training.train_v3 sufficient
+# 320 训练 / 40 评估 / 40 测试 — 纯HF vs 多保真，等量公平对比
+# ─────────────────────────────────────────────────────────
+
+if CLI_MODE == 'sufficient':
+
+    print("\n" + "="*60)
+    print("补充实验: 数据量充足场景等量对比 (320 HF 训练)")
+    print("="*60)
+
+    hifi_path = HIFI_DATA_PATH
+
+    # 320 训练 / 40 评估(早停) / 40 测试
+    (X_tr, y_tr, _), (X_ev, y_ev, _), (X_te, y_te, _) = split_hifi_data(
+        project_root / hifi_path,
+        n_train=320, n_eval=40, seed=RANDOM_SEED,
+    )
+    print(f"  训练: {len(y_tr)} 条 | 评估: {len(y_ev)} 条 | 测试: {len(y_te)} 条")
+
+    # ── 策略1: 纯高保真 (320条，随机初始化) ──
+    print("\n[策略1] 纯高保真 (320条，随机初始化)...")
+    _, res_hifi = train_hifi_only_v3(
+        X_tr, y_tr, X_ev, y_ev, X_te, y_te,
+        lr=1e-4, epochs=2000, patience=200,
+        exp_tag='sufficient_hifi_only_320',
+    )
+
+    # ── 策略2: 多保真 (LF预训练 + 320条微调) ──
+    print("\n[策略2] 多保真 (LF预训练 + 320条微调)...")
+    low_model = LianPINN_v2(hidden_dim=64)
+    low_ckpt = torch.load(
+        project_root / 'multi_fidelity/models/low_fidelity/lian_v3_low.pth',
+        weights_only=False,
+    )
+    low_model.load_state_dict(low_ckpt['model_state_dict'])
+    _, res_mf = train_multifidelity_v3(
+        low_model,
+        X_tr, y_tr, X_ev, y_ev, X_te, y_te,
+        freeze_n=1, lr=1e-4, epochs=2000, patience=200,
+        exp_tag='sufficient_multifidelity_320',
+    )
+
+    # ── 结果汇总 ──
+    print("\n" + "="*60)
+    print("补充实验汇总 (数据量充足，40条独立测试集)")
+    print("="*60)
+    print(f"  {'策略':<35} {'test R²':>8} {'test MAE':>10} {'test MAPE':>10} {'epoch':>8}")
+    print("  " + "─"*75)
+    for tag, res in [('纯高保真 (320条)', res_hifi), ('多保真 LF→HF (320条)', res_mf)]:
+        t = res['test']
+        print(f"  {tag:<35} {t['r2']:>8.4f} {t['mae']:>8.4f} Pa {t['mape']:>8.1f}%  "
+              f"{res['best_epoch']:>6}")
+    print("  " + "─"*75)
+    gain_r2   = res_mf['test']['r2']   - res_hifi['test']['r2']
+    gain_mape = res_hifi['test']['mape'] - res_mf['test']['mape']
+    print(f"\n  多保真增益: ΔR²={gain_r2:+.4f}  ΔMAPE={gain_mape:+.1f} pp")

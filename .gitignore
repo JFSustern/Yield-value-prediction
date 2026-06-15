@@ -1,0 +1,28 @@
+# OS and editor metadata
+.DS_Store
+.idea/
+.vscode/
+
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Test, lint, and coverage caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local logs and temporary files
+*.log
+*.tmp
+
+# Generated experiment outputs are reproducible and can be large.
+# Existing tracked reference results remain in Git.
+multi_fidelity/results/logs/
+multi_fidelity/results/plots/
+

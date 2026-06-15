@@ -22,6 +22,8 @@
 """
 
 import os
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
@@ -85,7 +87,7 @@ def generate(n_target=2000, save_dir="data/synthetic_table6_v2", seed=42):
         tau0 = tau0_paper(phi, phi_max, m1=0.72)
 
         # 过滤范围
-        if tau0 is np.nan or not (0.10 <= tau0 <= 2.50):
+        if np.isnan(tau0) or not (0.10 <= tau0 <= 2.50):
             continue
 
         records.append({
@@ -122,4 +124,7 @@ def generate(n_target=2000, save_dir="data/synthetic_table6_v2", seed=42):
 
 
 if __name__ == "__main__":
+    # All documented paths are relative to the repository root.
+    project_root = Path(__file__).resolve().parents[3]
+    os.chdir(project_root)
     generate(n_target=2000)

@@ -2,7 +2,7 @@
 Zhou 1999 体系多方法对比实验
 
 对比维度与 Lian 2025 体系保持对称，验证架构优势的跨体系一致性。
-共比较 10 种方法，组织为：
+共比较 9 种方法，组织为：
   - 无约束：纯MLP、残差多保真MFNN
   - 软约束：软约束PINN（λ六档搜索）、SA-PINN、软约束PINN+多保真
   - 其他：Meng复合MFNN、单阶段混合训练
@@ -229,7 +229,7 @@ def run_mlp(X_tr, y_tr, X_ev, y_ev, X_te, y_te):
     """纯 MLP（无物理约束）。"""
     set_seed()
     model = MLP_Zhou()
-    best_ep, elapsed = simple_train(model, X_tr, y_tr, X_ev, y_ev, lr=1e-3)
+    best_ep, _ = simple_train(model, X_tr, y_tr, X_ev, y_ev, lr=1e-3)
     r2, mae, mape, _ = eval_model(model, X_te, y_te)
     print(f"  纯MLP          | ep={best_ep}  R²={r2:.4f}  MAPE={mape:.1f}%")
     return dict(label='纯MLP', constraint='无约束', mf=False,
@@ -276,7 +276,7 @@ def run_soft_pinn(X_tr, y_tr, X_ev, y_ev, X_te, y_te, lam=0.1):
     best_r2, best_ep, wait, best_state = float('-inf'), 0, 0, None
     for ep in range(1, 1001):
         model.train(); optimizer.zero_grad()
-        tau_pred, m1_eff, tau_phys = model(X_tr)
+        tau_pred, _, tau_phys = model(X_tr)
         loss = log_mse(tau_pred, y_tr) + lam * log_mse(tau_pred, tau_phys)
         loss.backward(); optimizer.step()
         ev_r2, *_ = eval_model(model, X_ev, y_ev)
@@ -309,12 +309,11 @@ def run_sa_pinn(X_tr, y_tr, X_ev, y_ev, X_te, y_te):
     """SA-PINN：自适应 λ（Wang 2021 梯度比值权重）。"""
     set_seed()
     model    = SoftPINN_Zhou()
-    lam      = torch.tensor(1.0, requires_grad=False)
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
     best_r2, best_ep, wait, best_state = float('-inf'), 0, 0, None
     for ep in range(1, 1001):
         model.train(); optimizer.zero_grad()
-        tau_pred, m1_eff, tau_phys = model(X_tr)
+        tau_pred, _, tau_phys = model(X_tr)
         L_d = log_mse(tau_pred, y_tr)
         L_p = log_mse(tau_pred, tau_phys)
         # 自适应权重：λ = mean(|∇L_d|) / mean(|∇L_p|)
@@ -360,7 +359,7 @@ def run_soft_pinn_mf(X_lf_tr, y_lf_tr, X_tr, y_tr, X_ev, y_ev, X_te, y_te,
     best_r2, best_ep, wait, best_state = float('-inf'), 0, 0, None
     for ep in range(1, 1001):
         model.train(); opt2.zero_grad()
-        tau_pred, m1_eff, tau_phys = model(X_tr)
+        tau_pred, _, tau_phys = model(X_tr)
         (log_mse(tau_pred, y_tr) + lam * log_mse(tau_pred, tau_phys)).backward()
         opt2.step()
         ev_r2, *_ = eval_model(model, X_ev, y_ev)
@@ -439,7 +438,7 @@ def run_hard_hf_only(X_tr, y_tr, X_ev, y_ev, X_te, y_te):
     """硬约束，纯高保真（ZhouPINN_v1，随机初始化）。"""
     set_seed()
     model = ZhouPINN_v1()
-    best_ep, elapsed = simple_train(model, X_tr, y_tr, X_ev, y_ev, lr=1e-4)
+    best_ep, _ = simple_train(model, X_tr, y_tr, X_ev, y_ev, lr=1e-4)
     r2, mae, mape, _ = eval_model(model, X_te, y_te)
     print(f"  硬约束 HF-only | ep={best_ep}  R²={r2:.4f}  MAPE={mape:.1f}%")
     return dict(label='PI-MFNN HF-only（本文硬约束，无MF）', constraint='硬约束', mf=False,
@@ -580,8 +579,6 @@ def main(args):
     print(f'{"方法":<32} {"R²":>7} {"MAE/Pa":>8} {"MAPE/%":>8}')
     print(f'{"─"*65}')
     for r in results:
-        dagger = '†' if r['mf'] else ''
-        mf_str = '是' if r['mf'] else '否'
         print(f'{r["label"][:35]:<35} {r["R2"]:>7.4f} {r["MAE"]:>8.1f} {r["MAPE"]:>8.1f}')
     print(f'{"─"*65}')
     print(f'总耗时: {elapsed:.0f} s')
