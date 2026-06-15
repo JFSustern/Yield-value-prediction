@@ -1,18 +1,15 @@
 # PI-MFNN 屈服应力预测
 
-本仓库实现了一个物理硬约束的多保真神经网络（PI-MFNN），用于浓悬浮液/水泥浆体屈服应力预测。当前研究包含两个验证体系：
+本仓库实现物理硬约束多保真神经网络（PI-MFNN），用于 Lian 2025 水泥浆体与 Zhou 1999 Al2O3 悬浮液的屈服应力预测。
 
-| 体系 | 输入 | 网络反演量 | 物理约束层 |
+| 体系 | 输入 | 网络反演量 | 物理层 |
 |---|---|---|---|
-| Lian 2025 水泥浆体 | `Phi`, `SP_percent` | 最大堆积分数 `phi_max` | `tau = m1 * phi^3 / [phi_max * (phi_max - phi)]` |
-| Zhou 1999 Al2O3 悬浮液 | `phi`, `d_s_um` | 颗粒间力参数 `m1_eff` | 完整 YODEL 方程 |
+| Lian 2025 | `Phi`, `SP_percent` | 最大堆积分数 `phi_max` | Lian 屈服应力方程 |
+| Zhou 1999 | `phi`, `d_s_um` | 颗粒间力参数 `m1_eff` | 完整 YODEL 方程 |
 
-> 当前仓库是研究实验代码，不是 Web 服务。未来 Agent 的需求草案见
-> `docs/agent-requirements.md`，该功能尚未实现。
+## 环境
 
-## 快速开始
-
-建议使用 Python 3.9-3.12。训练依赖 PyTorch、NumPy、Pandas 和 Matplotlib。
+建议使用 Python 3.9-3.12。
 
 ```bash
 cd /path/to/Project
@@ -21,97 +18,108 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-运行 Lian 2025 主实验（30 条训练、10 条评估、360 条测试）：
+本机已有 Conda 环境时也可直接使用：
 
 ```bash
-python -m multi_fidelity.src.training.train_v3
+conda activate pytorch
 ```
 
-运行 Zhou 1999 四策略实验与多方法基线：
+## 项目结构
+
+```text
+Project/
+├── data/
+│   ├── lian2025/
+│   │   ├── high_fidelity/
+│   │   │   ├── all_400.csv
+│   │   │   ├── table6.csv
+│   │   │   └── splits/seed_*/
+│   │   └── low_fidelity/
+│   │       ├── dataset.csv
+│   │       ├── train.csv
+│   │       └── test.csv
+│   └── zhou1999/
+│       ├── high_fidelity/
+│       │   ├── dataset.csv
+│       │   ├── train.csv
+│       │   ├── eval.csv
+│       │   └── test.csv
+│       └── low_fidelity/
+│           ├── dataset.csv
+│           ├── train.csv
+│           └── test.csv
+├── multi_fidelity/
+│   ├── src/
+│   │   ├── data/                   # 两个体系的数据生成器
+│   │   ├── model/                  # 物理硬约束模型
+│   │   ├── physics/                # 独立物理公式
+│   │   └── training/               # 训练与对比实验
+│   ├── models/lian2025/            # Lian 参考权重
+│   └── results/
+│       ├── lian2025/
+│       └── zhou1999/
+├── docs/README.md                  # 数据与产物口径
+├── paper/                          # 参考论文
+├── run_lian2025_multiseed.py       # Lian 多随机种子实验
+└── requirements.txt
+```
+
+## 运行实验
+
+Lian 2025 主实验：
+
+```bash
+python -m multi_fidelity.src.training.train_lian2025
+```
+
+Lian 训练脚本还提供以下模式：
+
+```bash
+python -m multi_fidelity.src.training.train_lian2025 main
+python -m multi_fidelity.src.training.train_lian2025 arch
+python -m multi_fidelity.src.training.train_lian2025 hparam
+python -m multi_fidelity.src.training.train_lian2025 ablation
+python -m multi_fidelity.src.training.train_lian2025 sufficient
+```
+
+Zhou 1999 四策略实验与多方法基线：
 
 ```bash
 python -m multi_fidelity.src.training.run_zhou1999_experiment
 python -m multi_fidelity.src.training.run_zhou1999_baselines
 ```
 
-运行 Lian 2025 多随机种子实验：
+Lian 多随机种子实验：
 
 ```bash
-python run_multiseed.py
+python run_lian2025_multiseed.py
 ```
 
-训练命令会更新 `multi_fidelity/models/` 下的权重，并在
-`multi_fidelity/results/` 下生成日志和图片。需要保留历史结果时，请在运行前另存输出目录或提交当前权重。
-
-## 项目结构
-
-```text
-Project/
-├── data/                           # 训练、评估和测试 CSV
-│   ├── high_fidelity/              # Lian 体系原始/扩展数据及划分
-│   ├── synthetic_table6_v2/        # Lian 体系低保真合成数据
-│   ├── zhou1999_hf/                # Zhou 体系 HF 工作数据及划分
-│   └── zhou1999_lf/                # Zhou 体系低保真合成数据
-├── multi_fidelity/
-│   ├── src/
-│   │   ├── data/                   # 数据生成器
-│   │   ├── model/                  # Lian/Zhou 物理硬约束模型
-│   │   ├── physics/                # 独立物理公式
-│   │   └── training/               # 训练、消融和基线实验
-│   ├── models/                     # 当前参考模型权重
-│   └── results/                    # 当前参考结果和运行生成物
-├── docs/                           # 数据说明和后续需求草案
-├── paper/                          # 论文参考材料，不参与代码运行
-├── run_multiseed.py                # Lian 多种子鲁棒性实验
-└── requirements.txt
-```
-
-## 常用实验
-
-`train_v3` 使用一个位置参数选择实验：
-
-```bash
-python -m multi_fidelity.src.training.train_v3 main        # 默认主实验
-python -m multi_fidelity.src.training.train_v3 arch        # 网络架构搜索
-python -m multi_fidelity.src.training.train_v3 hparam      # 微调超参搜索
-python -m multi_fidelity.src.training.train_v3 ablation    # 四策略消融
-python -m multi_fidelity.src.training.train_v3 sufficient  # 320 条 HF 训练对比
-```
-
-重新生成低保真数据：
+## 重新生成数据
 
 ```bash
 python -m multi_fidelity.src.data.generator_lian2025
 python -m multi_fidelity.src.data.generator_zhou1999
 ```
 
-以上生成器会覆盖对应目录中的 CSV，请先确认是否需要保留现有数据。
+生成器会覆盖对应体系的 `low_fidelity/` 数据；Zhou 生成器还会覆盖其 `high_fidelity/` 数据。运行前应确认是否需要保留当前 CSV。
 
 ## 核心代码
 
-- `multi_fidelity/src/model/pinn_lian2025_v2.py`：Lian 主模型，网络预测 `phi_max`，物理层计算 `tau0`。
-- `multi_fidelity/src/model/pinn_lian2025_v3.py`：可配置宽度、深度和激活函数的架构搜索模型。
-- `multi_fidelity/src/model/pinn_zhou1999_v1.py`：Zhou/YODEL 硬约束模型，网络预测 `m1_eff`。
-- `multi_fidelity/src/training/train_v3.py`：Lian 训练、架构搜索、超参搜索、消融和充足数据实验。
-- `multi_fidelity/src/training/run_zhou1999_experiment.py`：Zhou 四策略对比。
-- `multi_fidelity/src/training/run_zhou1999_baselines.py`：Zhou 多方法基线对比。
+- `multi_fidelity/src/model/pinn_lian2025.py`：Lian 基础模型。
+- `multi_fidelity/src/model/pinn_lian2025_configurable.py`：架构搜索使用的可配置 Lian 模型。
+- `multi_fidelity/src/model/pinn_zhou1999.py`：Zhou/YODEL 模型。
+- `multi_fidelity/src/training/train_lian2025.py`：Lian 主实验、搜索和消融。
+- `multi_fidelity/src/training/run_zhou1999_experiment.py`：Zhou 四策略实验。
+- `multi_fidelity/src/training/run_zhou1999_baselines.py`：Zhou 多方法基线。
 
-## 数据与结果口径
+## 交接注意事项
 
-详细字段、样本数和来源风险见 `docs/README.md`。交接时尤其注意：
-
-1. `data/high_fidelity/hifi_table6.csv` 有 16 条整理后的 Table 6 记录。
-2. `data/high_fidelity/hf_all400.csv` 是当前 Lian 实验使用的 400 条工作数据；交付前应补充其扩展/生成过程和审核记录。
-3. `data/zhou1999_hf/` 当前数据由论文图形视觉估算、YODEL 标定和噪声模拟构成，不能直接表述为精确数字化的原始实验数据。
-4. `multi_fidelity/results/multiseed_results.json` 是已有实验产物；随机种子逻辑已修正，正式引用前应重新运行 `run_multiseed.py`。
-
-## 交接检查
-
-- 从仓库根目录执行命令，避免相对路径写入错误位置。
-- 确认 Python 和 PyTorch 版本后再重训；模型权重由 `state_dict` 加载。
-- 不要把测试集用于早停或超参选择；当前脚本使用独立 `eval` 集早停。
-- 正式发表前重新核验数据来源、随机种子结果和结果 JSON。
-- Git 工作区可能包含新训练权重和未提交实验数据，提交前逐项确认，不要批量丢弃。
+1. `data/lian2025/high_fidelity/all_400.csv` 是当前主实验使用的工作数据，其从 Table 6 数据扩展到 400 条的过程仍需补充来源记录。
+2. `data/zhou1999/high_fidelity/` 是基于论文图形视觉估算、YODEL 标定和噪声模拟得到的工作数据，不应表述为精确数字化的原始实验数据。
+3. 训练会覆盖 `multi_fidelity/models/lian2025/` 中的参考权重。
+4. 训练日志和图片写入 `multi_fidelity/results/<体系>/`；正式引用结果前应重新核验代码、数据和随机种子。
+5. 从仓库根目录执行命令，避免相对路径产生额外目录。
 
 ## 参考文献
 

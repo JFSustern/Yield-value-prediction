@@ -1,5 +1,5 @@
 """
-ZhouPINN v1 — 基于完整 YODEL 方程的物理硬约束模型
+ZhouPINN — 基于完整 YODEL 方程的物理硬约束模型
 
 参考数据:  Zhou, Solomon, Scales, Boger (1999)
            "The yield stress of concentrated flocculated suspensions
@@ -26,7 +26,7 @@ NPE 反演参数 (隐变量):
     phi    : 固体体积分数  (可测量)
     d_s_um : 表面平均粒径 μm (可测量，BET/Coulter)
 
-网络结构: 与 LianPINN_v2 对称
+网络结构: 与 LianPINN 对称
     Linear(2→64) → Tanh → Linear(64→64) → Tanh → Linear(64→64) → Tanh → Linear(64→1)
 """
 
@@ -34,11 +34,11 @@ import torch
 import torch.nn as nn
 
 
-class ZhouPINN_v1(nn.Module):
+class ZhouPINN(nn.Module):
     """
     Zhou 1999 / YODEL 硬约束 PI-MFNN 模型。
 
-    架构与 LianPINN_v2 对称（同 4层-64神经元-Tanh），
+    架构与 LianPINN 对称（同 4层-64神经元-Tanh），
     区别仅在 PCL 方程形式及隐变量物理意义。
     """
 
@@ -51,7 +51,7 @@ class ZhouPINN_v1(nn.Module):
     def __init__(self, hidden_dim: int = 64):
         super().__init__()
 
-        # NPE: 与 LianPINN_v2 完全对称
+        # NPE: 与 LianPINN 完全对称
         self.net = nn.Sequential(
             nn.Linear(2, hidden_dim),
             nn.Tanh(),
@@ -100,12 +100,12 @@ class ZhouPINN_v1(nn.Module):
 
 
 if __name__ == "__main__":
-    model = ZhouPINN_v1(hidden_dim=64)
+    model = ZhouPINN(hidden_dim=64)
     total = sum(p.numel() for p in model.parameters())
-    print(f"模型: ZhouPINN_v1  |  参数量: {total:,}")
+    print(f"模型: ZhouPINN  |  参数量: {total:,}")
     print(f"输入: [phi, d_s_um]")
-    print(f"固定: φ_max={ZhouPINN_v1.PHI_MAX_REF}, φ₀={ZhouPINN_v1.PHI_0}")
-    print(f"反演: m₁_eff ∈ [{ZhouPINN_v1.M1_LO}, {ZhouPINN_v1.M1_HI}] Pa")
+    print(f"固定: φ_max={ZhouPINN.PHI_MAX_REF}, φ₀={ZhouPINN.PHI_0}")
+    print(f"反演: m₁_eff ∈ [{ZhouPINN.M1_LO}, {ZhouPINN.M1_HI}] Pa")
     print(f"PCL:  τ = m₁_eff × φ(φ−φ₀)² / [φ_max(φ_max−φ)]")
     print()
 
@@ -124,6 +124,6 @@ if __name__ == "__main__":
         print(f"{test_cases[i,0].item():.2f}   {test_cases[i,1].item():.3f}   "
               f"{tau[i].item():>10.1f}    {m1[i].item():>8.1f}")
     print()
-    print("与 LianPINN_v2 对比:")
+    print("与 LianPINN 对比:")
     print(f"  LianPINN: 反演 φ_max (堆积参数),    PCL = m₁×φ³/[φ_max×(φ_max-φ)]")
     print(f"  ZhouPINN: 反演 m₁_eff (颗粒间力), PCL = m₁×φ(φ-φ₀)²/[φ_max×(φ_max-φ)]")

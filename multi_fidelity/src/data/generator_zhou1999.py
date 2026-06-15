@@ -134,15 +134,15 @@ def build_hf_digitized(seed: int = 42) -> pd.DataFrame:
     return df
 
 
-def save_hf_splits(df: pd.DataFrame, save_dir: str = 'data/zhou1999_hf',
+def save_hf_splits(df: pd.DataFrame, save_dir: str = 'data/zhou1999/high_fidelity',
                    seed: int = 42):
     """
     保存 HF 数据并按稀缺场景划分。
 
     因 HF 数据量有限 (~48 条)，划分为:
-      train_scarce : 30 条
-      eval         : 10 条
-      test         :  8 条 (剩余)
+      train : 30 条
+      eval  : 10 条
+      test  : 剩余样本
 
     注: 测试集仅 8 条，报告指标时须说明统计局限性。
     """
@@ -156,21 +156,21 @@ def save_hf_splits(df: pd.DataFrame, save_dir: str = 'data/zhou1999_hf',
     eval_idx  = idx[30:40]
     test_idx  = idx[40:]
 
-    df.iloc[train_idx].to_csv(f'{save_dir}/train_scarce.csv', index=False)
-    df.iloc[eval_idx ].to_csv(f'{save_dir}/eval.csv',         index=False)
-    df.iloc[test_idx ].to_csv(f'{save_dir}/test.csv',         index=False)
+    df.iloc[train_idx].to_csv(f'{save_dir}/train.csv', index=False)
+    df.iloc[eval_idx ].to_csv(f'{save_dir}/eval.csv',  index=False)
+    df.iloc[test_idx ].to_csv(f'{save_dir}/test.csv',  index=False)
 
     print(f"HF 数据总量: {len(df)} 条")
-    print(f"  train_scarce: {len(train_idx)}")
-    print(f"  eval:         {len(eval_idx)}")
-    print(f"  test:         {len(test_idx)}  ← 量少，结果仅供参考")
+    print(f"  train: {len(train_idx)}")
+    print(f"  eval:  {len(eval_idx)}")
+    print(f"  test:  {len(test_idx)}  ← 量少，结果仅供参考")
     print(f"已保存至 {save_dir}/")
 
 
 # ── LF 合成数据生成 ────────────────────────────────────────────────────────
 
 def generate_lf(n_target: int = 2000,
-                save_dir: str  = 'data/zhou1999_lf',
+                save_dir: str  = 'data/zhou1999/low_fidelity',
                 seed: int      = 42) -> pd.DataFrame:
     """
     生成低保真合成数据 (宽参数空间，用于预训练)。
@@ -253,11 +253,11 @@ if __name__ == '__main__':
     print(f'  phi:  {df_hf.phi.min():.2f} – {df_hf.phi.max():.2f}')
     print(f'  tau:  {df_hf.tau_Pa.min():.1f} – {df_hf.tau_Pa.max():.1f} Pa')
     print(f'  各粉末数量: {df_hf.powder.value_counts().to_dict()}')
-    save_hf_splits(df_hf, save_dir='data/zhou1999_hf', seed=42)
+    save_hf_splits(df_hf, save_dir='data/zhou1999/high_fidelity', seed=42)
 
     # LF: 合成数据
     print('\n── LF 合成数据 ──')
-    generate_lf(n_target=2000, save_dir='data/zhou1999_lf', seed=42)
+    generate_lf(n_target=2000, save_dir='data/zhou1999/low_fidelity', seed=42)
 
     print('\n全部完成。')
     print()

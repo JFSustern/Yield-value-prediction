@@ -23,6 +23,5 @@ htmlcov/
 
 # Generated experiment outputs are reproducible and can be large.
 # Existing tracked reference results remain in Git.
-multi_fidelity/results/logs/
-multi_fidelity/results/plots/
-
+multi_fidelity/results/*/logs/
+multi_fidelity/results/*/plots/

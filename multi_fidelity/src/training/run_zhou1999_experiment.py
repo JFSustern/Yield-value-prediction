@@ -22,9 +22,9 @@ Zhou 1999 体系跨模型泛化验证实验
 运行方式:
   cd /path/to/Project
   python -m multi_fidelity.src.training.run_zhou1999_experiment \\
-      --lf-data  data/zhou1999_lf \\
-      --hf-data  data/zhou1999_hf \\
-      --out-dir  multi_fidelity/results/zhou1999_exp
+      --lf-data  data/zhou1999/low_fidelity \\
+      --hf-data  data/zhou1999/high_fidelity \\
+      --out-dir  multi_fidelity/results/zhou1999
 """
 
 import argparse
@@ -46,7 +46,7 @@ import torch.optim as optim
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from multi_fidelity.src.model.pinn_zhou1999_v1 import ZhouPINN_v1   # noqa
+from multi_fidelity.src.model.pinn_zhou1999 import ZhouPINN   # noqa
 
 # ── 常量 ──────────────────────────────────────────────────────────────────
 
@@ -90,7 +90,7 @@ def train_lf(model, X_tr, y_tr, X_te, y_te,
              lr=1e-3, max_epochs=500, patience=50, batch_size=64):
     optimizer = optim.Adam(model.parameters(), lr=lr)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='min', factor=0.5, patience=10, verbose=False)
+        optimizer, mode='min', factor=0.5, patience=10)
     best_r2, best_state, wait = -1.0, None, 0
     for ep in range(1, max_epochs + 1):
         model.train()
@@ -143,8 +143,8 @@ def train_hf(model, X_tr, y_tr, X_ev, y_ev,
 def run_strategy_A(X_test, y_test) -> dict:
     """策略 A: 纯物理公式 (m₁_eff = 固定均值)."""
     phi  = X_test[:, 0]
-    phi0 = ZhouPINN_v1.PHI_0
-    pm   = ZhouPINN_v1.PHI_MAX_REF
+    phi0 = ZhouPINN.PHI_0
+    pm   = ZhouPINN.PHI_MAX_REF
     eps  = 1e-6
     num  = M1_FIXED_MEAN * phi * torch.clamp(phi - phi0, min=eps) ** 2
     den  = pm * torch.clamp(pm - phi, min=eps)
@@ -160,7 +160,7 @@ def run_strategy_A(X_test, y_test) -> dict:
 
 def run_strategy_B(X_lf_tr, y_lf_tr, X_lf_te, y_lf_te, X_te, y_te) -> dict:
     set_seed()
-    model = ZhouPINN_v1()
+    model = ZhouPINN()
     best_lf_r2 = train_lf(model, X_lf_tr, y_lf_tr, X_lf_te, y_lf_te)
     r2, mae, mape, _ = compute_metrics(model, X_te, y_te)
     print(f'  策略 B (纯低保真) | test R²={r2:.4f} MAPE={mape:.1f}%')
@@ -170,7 +170,7 @@ def run_strategy_B(X_lf_tr, y_lf_tr, X_lf_te, y_lf_te, X_te, y_te) -> dict:
 
 def run_strategy_C(X_hf_tr, y_hf_tr, X_hf_ev, y_hf_ev, X_te, y_te) -> dict:
     set_seed()
-    model = ZhouPINN_v1()
+    model = ZhouPINN()
     _, best_epoch = train_hf(model, X_hf_tr, y_hf_tr, X_hf_ev, y_hf_ev,
                              lr=1e-4, freeze_n=0)
     r2, mae, mape, _ = compute_metrics(model, X_te, y_te)
@@ -184,7 +184,7 @@ def run_strategy_D(X_lf_tr, y_lf_tr, X_lf_te, y_lf_te,
                    X_hf_tr, y_hf_tr, X_hf_ev, y_hf_ev,
                    X_te, y_te, freeze_n=1) -> dict:
     set_seed()
-    model = ZhouPINN_v1()
+    model = ZhouPINN()
     best_lf_r2 = train_lf(model, X_lf_tr, y_lf_tr, X_lf_te, y_lf_te)
     best_ev_r2, best_epoch = train_hf(model, X_hf_tr, y_hf_tr, X_hf_ev, y_hf_ev,
                                       lr=1e-4, freeze_n=freeze_n)
@@ -207,7 +207,7 @@ def scatter_four(results, X_test, y_test, out_path: Path):
 
     # strategy A prediction
     phi  = X_test[:, 0]
-    phi0 = ZhouPINN_v1.PHI_0; pm = ZhouPINN_v1.PHI_MAX_REF; eps = 1e-6
+    phi0 = ZhouPINN.PHI_0; pm = ZhouPINN.PHI_MAX_REF; eps = 1e-6
     pred_A = (M1_FIXED_MEAN * phi * torch.clamp(phi-phi0,min=eps)**2 /
               (pm * torch.clamp(pm-phi, min=eps))).numpy()
 
@@ -243,7 +243,7 @@ def main(args):
 
     X_lf_tr, y_lf_tr, _ = load_tensors(Path(args.lf_data) / 'train.csv')
     X_lf_te, y_lf_te, _ = load_tensors(Path(args.lf_data) / 'test.csv')
-    X_hf_tr, y_hf_tr, _ = load_tensors(Path(args.hf_data) / 'train_scarce.csv')
+    X_hf_tr, y_hf_tr, _ = load_tensors(Path(args.hf_data) / 'train.csv')
     X_hf_ev, y_hf_ev, _ = load_tensors(Path(args.hf_data) / 'eval.csv')
     X_te,    y_te,    _  = load_tensors(Path(args.hf_data) / 'test.csv')
 
@@ -288,8 +288,8 @@ def main(args):
     summary = dict(
         system    = 'Zhou1999_Al2O3',
         equation  = 'tau = m1_eff * phi*(phi-phi0)^2 / [phi_max*(phi_max-phi)]',
-        phi_max_fixed = ZhouPINN_v1.PHI_MAX_REF,
-        phi0_fixed    = ZhouPINN_v1.PHI_0,
+        phi_max_fixed = ZhouPINN.PHI_MAX_REF,
+        phi0_fixed    = ZhouPINN.PHI_0,
         hf_train_n    = HF_TRAIN_N,
         test_n        = len(X_te),
         elapsed_s     = round(elapsed, 1),
@@ -311,9 +311,9 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Zhou 1999 Al₂O₃ 体系跨模型验证')
-    parser.add_argument('--lf-data',  default='data/zhou1999_lf')
-    parser.add_argument('--hf-data',  default='data/zhou1999_hf')
-    parser.add_argument('--out-dir',  default='multi_fidelity/results/zhou1999_exp')
+    parser.add_argument('--lf-data',  default='data/zhou1999/low_fidelity')
+    parser.add_argument('--hf-data',  default='data/zhou1999/high_fidelity')
+    parser.add_argument('--out-dir',  default='multi_fidelity/results/zhou1999')
     parser.add_argument('--freeze-n', type=int, default=1)
     args = parser.parse_args()
     os.chdir(project_root)

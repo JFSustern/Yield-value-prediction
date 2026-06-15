@@ -13,9 +13,9 @@ Zhou 1999 体系多方法对比实验
 运行：
   cd /path/to/Project
   python -m multi_fidelity.src.training.run_zhou1999_baselines \\
-      --lf-data data/zhou1999_lf \\
-      --hf-data data/zhou1999_hf \\
-      --out-dir multi_fidelity/results/zhou1999_exp
+      --lf-data data/zhou1999/low_fidelity \\
+      --hf-data data/zhou1999/high_fidelity \\
+      --out-dir multi_fidelity/results/zhou1999
 """
 
 import argparse
@@ -38,7 +38,7 @@ import torch.optim as optim
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from multi_fidelity.src.model.pinn_zhou1999_v1 import ZhouPINN_v1   # noqa
+from multi_fidelity.src.model.pinn_zhou1999 import ZhouPINN   # noqa
 
 # ── 常量 ──────────────────────────────────────────────────────────────────
 
@@ -46,10 +46,10 @@ FEATURES = ['phi', 'd_s_um']
 TARGET   = 'tau_Pa'
 SEED     = 42
 
-PHI_MAX_REF = ZhouPINN_v1.PHI_MAX_REF   # 0.570 固定
-PHI_0       = ZhouPINN_v1.PHI_0          # 0.026 固定
-M1_LO       = ZhouPINN_v1.M1_LO         # 50 Pa
-M1_HI       = ZhouPINN_v1.M1_HI         # 3000 Pa
+PHI_MAX_REF = ZhouPINN.PHI_MAX_REF   # 0.570 固定
+PHI_0       = ZhouPINN.PHI_0          # 0.026 固定
+M1_LO       = ZhouPINN.M1_LO         # 50 Pa
+M1_HI       = ZhouPINN.M1_HI         # 3000 Pa
 K_H_REF     = 65.0    # Pa·μm²，LF 标定常数
 
 # ── 工具 ──────────────────────────────────────────────────────────────────
@@ -411,7 +411,7 @@ def run_meng_mfnn(X_lf_tr, y_lf_tr, X_tr, y_tr, X_ev, y_ev, X_te, y_te):
 def run_single_stage(X_lf_tr, y_lf_tr, X_tr, y_tr, X_ev, y_ev, X_te, y_te):
     """单阶段混合训练（LF+HF 同时训练，非两阶段）。"""
     set_seed()
-    model = ZhouPINN_v1()
+    model = ZhouPINN()
     X_mix = torch.cat([X_lf_tr[:len(X_tr)], X_tr], dim=0)
     y_mix = torch.cat([y_lf_tr[:len(X_tr)], y_tr], dim=0)
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
@@ -435,9 +435,9 @@ def run_single_stage(X_lf_tr, y_lf_tr, X_tr, y_tr, X_ev, y_ev, X_te, y_te):
 
 
 def run_hard_hf_only(X_tr, y_tr, X_ev, y_ev, X_te, y_te):
-    """硬约束，纯高保真（ZhouPINN_v1，随机初始化）。"""
+    """硬约束，纯高保真（ZhouPINN，随机初始化）。"""
     set_seed()
-    model = ZhouPINN_v1()
+    model = ZhouPINN()
     best_ep, _ = simple_train(model, X_tr, y_tr, X_ev, y_ev, lr=1e-4)
     r2, mae, mape, _ = eval_model(model, X_te, y_te)
     print(f"  硬约束 HF-only | ep={best_ep}  R²={r2:.4f}  MAPE={mape:.1f}%")
@@ -449,11 +449,11 @@ def run_hard_mf(X_lf_tr, y_lf_tr, X_lf_te, y_lf_te,
                 X_tr, y_tr, X_ev, y_ev, X_te, y_te, freeze_n=1):
     """硬约束，多保真融合（PI-MFNN，本文方法）。"""
     set_seed()
-    model = ZhouPINN_v1()
+    model = ZhouPINN()
     # LF 预训练
     optimizer_lf = optim.Adam(model.parameters(), lr=1e-3)
     scheduler    = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer_lf, mode='min', factor=0.5, patience=10, verbose=False)
+        optimizer_lf, mode='min', factor=0.5, patience=10)
     best_r2_lf, best_state_lf, wait = float('-inf'), None, 0
     for ep in range(1, 501):
         model.train()
@@ -501,8 +501,27 @@ def run_hard_mf(X_lf_tr, y_lf_tr, X_lf_te, y_lf_te,
 
 # ── 排名图 ────────────────────────────────────────────────────────────────
 
+def _ranking_label(result):
+    """Use ASCII/English labels so plots render without platform-specific CJK fonts."""
+    label = result['label']
+    if label.startswith('软约束PINN(最优'):
+        return f"Soft PINN (best lambda={result.get('lam')})"
+
+    labels = {
+        '纯MLP': 'Pure MLP',
+        '残差多保真MFNN†': 'Residual MFNN',
+        'SA-PINN(自适应λ)': 'SA-PINN',
+        '软约束PINN+多保真†': 'Soft PINN + MF',
+        'Meng复合MFNN†': 'Meng MFNN',
+        '单阶段混合训练†': 'Single-stage mixed',
+        'PI-MFNN HF-only（本文硬约束，无MF）': 'PI-MFNN HF-only',
+        'PI-MFNN（本文）†': 'PI-MFNN',
+    }
+    return labels.get(label, label)
+
+
 def plot_ranking(results, out_path):
-    methods = [r['label'] for r in results]
+    methods = [_ranking_label(r) for r in results]
     r2s     = [r['R2'] for r in results]
     colors  = []
     for r in results:
@@ -546,7 +565,7 @@ def main(args):
 
     X_lf_tr, y_lf_tr = load_tensors(Path(args.lf_data) / 'train.csv')
     X_lf_te, y_lf_te = load_tensors(Path(args.lf_data) / 'test.csv')
-    X_tr,    y_tr    = load_tensors(Path(args.hf_data) / 'train_scarce.csv')
+    X_tr,    y_tr    = load_tensors(Path(args.hf_data) / 'train.csv')
     X_ev,    y_ev    = load_tensors(Path(args.hf_data) / 'eval.csv')
     X_te,    y_te    = load_tensors(Path(args.hf_data) / 'test.csv')
 
@@ -598,9 +617,9 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--lf-data',  default='data/zhou1999_lf')
-    parser.add_argument('--hf-data',  default='data/zhou1999_hf')
-    parser.add_argument('--out-dir',  default='multi_fidelity/results/zhou1999_exp')
+    parser.add_argument('--lf-data',  default='data/zhou1999/low_fidelity')
+    parser.add_argument('--hf-data',  default='data/zhou1999/high_fidelity')
+    parser.add_argument('--out-dir',  default='multi_fidelity/results/zhou1999')
     parser.add_argument('--freeze-n', type=int, default=1)
     args = parser.parse_args()
     os.chdir(project_root)

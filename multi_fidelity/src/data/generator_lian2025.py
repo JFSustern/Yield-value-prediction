@@ -1,5 +1,5 @@
 """
-数据生成器 v2 - 严格对齐论文公式
+Lian 2025 低保真数据生成器 - 严格对齐论文公式
 
 论文: Lian et al., Materials 2025, 18, 2983
 公式 (Eq.4): τ = m1 * φ³ / [φ_max(SP) * (φ_max(SP) - φ)]
@@ -49,11 +49,11 @@ def tau0_paper(phi, phi_max, m1=0.72):
     return m1 * phi**3 / denom
 
 
-def generate(n_target=2000, save_dir="data/synthetic_table6_v2", seed=42):
+def generate(n_target=2000, save_dir="data/lian2025/low_fidelity", seed=42):
     np.random.seed(seed)
 
     print("=" * 60)
-    print("数据生成 v2 - 严格对齐论文公式")
+    print("Lian 2025 低保真数据生成 - 严格对齐论文公式")
     print("=" * 60)
     print("""
 论文公式: τ = m1 * φ³ / [φ_max(SP) * (φ_max(SP) - φ)]
@@ -105,9 +105,9 @@ def generate(n_target=2000, save_dir="data/synthetic_table6_v2", seed=42):
     df_test  = df.iloc[n_train:]
 
     os.makedirs(save_dir, exist_ok=True)
-    df.to_csv(f"{save_dir}/dataset.csv",    index=False)
-    df_train.to_csv(f"{save_dir}/train_data.csv", index=False)
-    df_test.to_csv(f"{save_dir}/test_data.csv",   index=False)
+    df.to_csv(f"{save_dir}/dataset.csv", index=False)
+    df_train.to_csv(f"{save_dir}/train.csv", index=False)
+    df_test.to_csv(f"{save_dir}/test.csv", index=False)
 
     print(f"有效样本: {len(df)}  (尝试 {attempts} 次)")
     print(f"\n生成数据统计:")

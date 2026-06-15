@@ -1,5 +1,5 @@
 """
-多保真度训练脚本 v3 - 验证真实小样本场景下多保真的价值
+Lian 2025 多保真训练脚本 - 验证真实小样本场景下多保真的价值
 
 实验设计:
   - 将 400 条数据视为"全量高保真数据"
@@ -11,7 +11,7 @@
   低保真预训练 + 少量真实数据微调，是否比单独用少量真实数据训练效果更好？
   这才是多保真学习的真正价值所在。
 
-模型: LianPINN_v2
+模型: LianPINN
   输入: [Phi, SP_percent] (2维)
   预测: phi_max → 代入论文公式计算 tau0
   固定: m1 = 0.72 Pa
@@ -36,13 +36,13 @@ from datetime import datetime
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from multi_fidelity.src.model.pinn_lian2025_v2 import LianPINN_v2
-from multi_fidelity.src.model.pinn_lian2025_v3 import LianPINN_v3
+from multi_fidelity.src.model.pinn_lian2025 import LianPINN
+from multi_fidelity.src.model.pinn_lian2025_configurable import ConfigurableLianPINN
 
 FEATURES = ['Phi', 'SP_percent']
 TARGET   = 'Tau0_Pa'
-RESULTS_DIR = project_root / 'multi_fidelity/results'
-HIFI_DATA_PATH = 'data/high_fidelity/hf_all400.csv'
+RESULTS_DIR = project_root / 'multi_fidelity/results/lian2025'
+HIFI_DATA_PATH = 'data/lian2025/high_fidelity/all_400.csv'
 
 # 随机种子，保证实验可复现
 RANDOM_SEED = 42
@@ -122,7 +122,7 @@ def split_hifi_data(hifi_path, n_train=30, n_eval=10, seed=RANDOM_SEED):
     df_test  = df.iloc[test_idx].reset_index(drop=True)
 
     # 保存划分结果到 CSV（方便检查和复现）
-    split_dir = Path(hifi_path).parent / f'v3_split_seed{seed}'
+    split_dir = Path(hifi_path).parent / 'splits' / f'seed_{seed}'
     split_dir.mkdir(parents=True, exist_ok=True)
     df_train.to_csv(split_dir / 'train.csv', index=False)
     df_eval.to_csv(split_dir  / 'eval.csv',  index=False)
@@ -153,13 +153,13 @@ def split_hifi_data(hifi_path, n_train=30, n_eval=10, seed=RANDOM_SEED):
 
 
 # ─────────────────────────────────────────────────────────
-# Phase 1: 低保真度训练 (与 v2 相同，复用)
+# Phase 1: 低保真度训练
 # ─────────────────────────────────────────────────────────
 
 def train_low_fidelity(
-    train_path = 'data/synthetic_table6_v2/train_data.csv',
-    test_path  = 'data/synthetic_table6_v2/test_data.csv',
-    save_path  = 'multi_fidelity/models/low_fidelity/lian_v3_low.pth',
+    train_path = 'data/lian2025/low_fidelity/train.csv',
+    test_path  = 'data/lian2025/low_fidelity/test.csv',
+    save_path  = 'multi_fidelity/models/lian2025/low_fidelity.pth',
     hidden_dim = 64,
     lr         = 1e-3,
     epochs     = 500,
@@ -179,13 +179,13 @@ def train_low_fidelity(
     print(f"  SP%:  {df_train.SP_percent.min():.2f}–{df_train.SP_percent.max():.2f}")
     print(f"  τ₀:   {df_train.Tau0_Pa.min():.3f}–{df_train.Tau0_Pa.max():.3f} Pa")
 
-    model = LianPINN_v2(hidden_dim=hidden_dim)
+    model = LianPINN(hidden_dim=hidden_dim)
     total = sum(p.numel() for p in model.parameters())
     print(f"\n模型参数量: {total:,}  hidden_dim={hidden_dim}")
 
     optimizer = optim.Adam(model.parameters(), lr=lr)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='min', factor=0.5, patience=10, verbose=False)
+        optimizer, mode='min', factor=0.5, patience=10)
 
     history = {'train_loss':[], 'test_loss':[], 'test_r2':[], 'test_mae':[], 'lr':[]}
     best_loss = float('inf')
@@ -244,7 +244,7 @@ def train_low_fidelity(
     te_loss, te_r2, te_mae, te_mape, _, _ = compute_metrics(model, X_test,  y_test)
 
     result = {
-        'phase': 'low_fidelity_v3',
+        'phase': 'low_fidelity',
         'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M'),
         'epochs_run': len(history['train_loss']),
         'elapsed_s': round(elapsed, 1),
@@ -264,31 +264,31 @@ def train_low_fidelity(
 
 
 # ─────────────────────────────────────────────────────────
-# 实验 14: 多保真 v3 (低保真预训练 + 少量高保真微调)
+# 实验 14: 多保真训练 (低保真预训练 + 少量高保真微调)
 # ─────────────────────────────────────────────────────────
 
-def train_multifidelity_v3(
+def train_multifidelity(
     low_model,
     X_hifi_train, y_hifi_train,
     X_hifi_eval,  y_hifi_eval,
     X_hifi_test,  y_hifi_test,
-    save_path   = 'multi_fidelity/models/high_fidelity/lian_v3_multifidelity.pth',
+    save_path   = 'multi_fidelity/models/lian2025/multifidelity.pth',
     freeze_n    = 1,
     lr          = 1e-4,
     epochs      = 1000,
     patience    = 150,
     weight_decay = 0.0,
-    exp_tag     = 'exp14_multifidelity_v3',
+    exp_tag     = 'exp14_multifidelity',
     seed        = RANDOM_SEED,
 ):
     """
-    实验 14: 多保真策略 v3
+    实验 14: 多保真策略
     低保真预训练权重 → 冻结前 freeze_n 层 → 在少量高保真数据上微调
     使用高保真评估集做 early stop，最终在高保真测试集上报告
     """
     set_seed(seed)
     print("\n" + "="*60)
-    print(f"实验 14: 多保真 v3 (低保真预训练 + {len(y_hifi_train)} 条高保真微调)")
+    print(f"实验 14: 多保真训练 (低保真预训练 + {len(y_hifi_train)} 条高保真微调)")
     print(f"实验标签: {exp_tag}")
     print("="*60)
 
@@ -375,7 +375,7 @@ def train_multifidelity_v3(
     te_loss, te_r2, te_mae, te_mape, te_pred, _ = compute_metrics(model, X_hifi_test,  y_hifi_test)
 
     result = {
-        'phase': 'multifidelity_v3',
+        'phase': 'multifidelity',
         'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M'),
         'exp_tag': exp_tag,
         'epochs_run': len(history['train_loss']),
@@ -404,47 +404,48 @@ def train_multifidelity_v3(
     print(f"  {'高保真测试集(360条)':<20} {te_r2:>8.4f} {te_mae:>8.4f} Pa {te_mape:>6.1f}%  ← 最终报告")
     print(f"{'─'*60}")
 
-    _plot_v3_training(history, exp_tag,
-                      save_path=RESULTS_DIR / f'plots/lian_v3_{exp_tag}_training.png')
-    _plot_v3_scatter(y_hifi_test.numpy(), te_pred, exp_tag,
-                     title=f'实验14 多保真v3 测试集 (360条)\nR²={te_r2:.4f}  MAE={te_mae:.4f} Pa',
-                     save_path=RESULTS_DIR / f'plots/lian_v3_{exp_tag}_test_scatter.png')
+    _plot_training(history, exp_tag,
+                      save_path=RESULTS_DIR / f'plots/lian_{exp_tag}_training.png')
+    _plot_scatter(y_hifi_test.numpy(), te_pred, exp_tag,
+                     title=f'Multi-fidelity Test Set (n=360)\n'
+                           f'R²={te_r2:.4f}  MAE={te_mae:.4f} Pa',
+                     save_path=RESULTS_DIR / f'plots/lian_{exp_tag}_test_scatter.png')
 
     return model, result
 
 
 # ─────────────────────────────────────────────────────────
-# 实验 15: 纯高保真 v3 (无预训练，直接用少量数据训练)
+# 实验 15: 纯高保真训练 (无预训练，直接用少量数据训练)
 # ─────────────────────────────────────────────────────────
 
-def train_hifi_only_v3(
+def train_hifi_only(
     X_hifi_train, y_hifi_train,
     X_hifi_eval,  y_hifi_eval,
     X_hifi_test,  y_hifi_test,
-    save_path   = 'multi_fidelity/models/high_fidelity/lian_v3_hifi_only.pth',
+    save_path   = 'multi_fidelity/models/lian2025/hifi_only.pth',
     hidden_dim  = 64,
     lr          = 1e-4,
     epochs      = 1000,
     patience    = 150,
     weight_decay = 0.0,
-    exp_tag     = 'exp15_hifi_only_v3',
+    exp_tag     = 'exp15_hifi_only',
     seed        = RANDOM_SEED,
 ):
     """
-    实验 15: 纯高保真对照组 v3
+    实验 15: 纯高保真对照组
     随机初始化，直接在少量高保真数据上训练
     使用高保真评估集做 early stop，最终在高保真测试集上报告
     """
     set_seed(seed)
     print("\n" + "="*60)
-    print(f"实验 15: 纯高保真 v3 (随机初始化 + {len(y_hifi_train)} 条高保真训练)")
+    print(f"实验 15: 纯高保真训练 (随机初始化 + {len(y_hifi_train)} 条高保真训练)")
     print(f"实验标签: {exp_tag}")
     print("="*60)
 
     save_full = project_root / save_path
     os.makedirs(save_full.parent, exist_ok=True)
 
-    model = LianPINN_v2(hidden_dim=hidden_dim)
+    model = LianPINN(hidden_dim=hidden_dim)
     total = sum(p.numel() for p in model.parameters())
     print(f"模型参数量: {total:,}  (随机初始化，无预训练)")
     print(f"高保真训练: {len(y_hifi_train)} 条  评估: {len(y_hifi_eval)} 条  测试: {len(y_hifi_test)} 条")
@@ -508,7 +509,7 @@ def train_hifi_only_v3(
     te_loss, te_r2, te_mae, te_mape, te_pred, _ = compute_metrics(model, X_hifi_test,  y_hifi_test)
 
     result = {
-        'phase': 'hifi_only_v3',
+        'phase': 'hifi_only',
         'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M'),
         'exp_tag': exp_tag,
         'epochs_run': len(history['train_loss']),
@@ -537,11 +538,12 @@ def train_hifi_only_v3(
     print(f"  {'高保真测试集(360条)':<20} {te_r2:>8.4f} {te_mae:>8.4f} Pa {te_mape:>6.1f}%  ← 最终报告")
     print(f"{'─'*60}")
 
-    _plot_v3_training(history, exp_tag,
-                      save_path=RESULTS_DIR / f'plots/lian_v3_{exp_tag}_training.png')
-    _plot_v3_scatter(y_hifi_test.numpy(), te_pred, exp_tag,
-                     title=f'实验15 纯高保真v3 测试集 (360条)\nR²={te_r2:.4f}  MAE={te_mae:.4f} Pa',
-                     save_path=RESULTS_DIR / f'plots/lian_v3_{exp_tag}_test_scatter.png')
+    _plot_training(history, exp_tag,
+                      save_path=RESULTS_DIR / f'plots/lian_{exp_tag}_training.png')
+    _plot_scatter(y_hifi_test.numpy(), te_pred, exp_tag,
+                     title=f'HF-only Test Set (n=360)\n'
+                           f'R²={te_r2:.4f}  MAE={te_mae:.4f} Pa',
+                     save_path=RESULTS_DIR / f'plots/lian_{exp_tag}_test_scatter.png')
 
     return model, result
 
@@ -550,7 +552,7 @@ def train_hifi_only_v3(
 # 绘图函数
 # ─────────────────────────────────────────────────────────
 
-def _plot_v3_training(history, exp_tag, save_path):
+def _plot_training(history, exp_tag, save_path):
     os.makedirs(Path(save_path).parent, exist_ok=True)
     fig, axes = plt.subplots(1, 3, figsize=(15, 4))
     axes[0].plot(history['train_loss'], label='Train', alpha=0.8)
@@ -566,7 +568,7 @@ def _plot_v3_training(history, exp_tag, save_path):
     plt.savefig(save_path, dpi=150, bbox_inches='tight'); plt.close()
     print(f"训练曲线: {save_path}")
 
-def _plot_v3_scatter(y_true, y_pred, exp_tag, title, save_path):
+def _plot_scatter(y_true, y_pred, exp_tag, title, save_path):
     os.makedirs(Path(save_path).parent, exist_ok=True)
     lim = [min(y_true.min(), y_pred.min())*0.85, max(y_true.max(), y_pred.max())*1.1]
     r2  = 1 - np.sum((y_true-y_pred)**2)/np.sum((y_true-y_true.mean())**2)
@@ -613,7 +615,10 @@ def _plot_comparison(results_list, save_path):
     for i, v in enumerate(mapes):
         axes[2].text(i, v + 0.2, f'{v:.1f}%', ha='center', fontsize=10)
 
-    plt.suptitle('v3 实验对比: 多保真 vs 纯高保真 (测试集 360条)', fontweight='bold')
+    plt.suptitle(
+        'Lian 2025: Multi-fidelity vs HF-only (test n=360)',
+        fontweight='bold',
+    )
     plt.tight_layout()
     plt.savefig(save_path, dpi=150, bbox_inches='tight'); plt.close()
     print(f"对比图: {save_path}")
@@ -625,7 +630,7 @@ def _plot_comparison(results_list, save_path):
 
 if CLI_MODE == 'main':
     print("\n" + "="*60)
-    print("v3 实验: 验证真实小样本场景下多保真策略的价值")
+    print("Lian 2025 实验: 验证真实小样本场景下多保真策略的价值")
     print("="*60)
 
     hifi_path = HIFI_DATA_PATH
@@ -642,30 +647,30 @@ if CLI_MODE == 'main':
     low_model, low_result = train_low_fidelity()
     all_results.append(low_result)
 
-    # ── 实验 14: 多保真 v3 ──
-    _, exp14_result = train_multifidelity_v3(
+    # ── 实验 14: 多保真 ──
+    _, exp14_result = train_multifidelity(
         low_model,
         X_tr, y_tr, X_ev, y_ev, X_te, y_te,
         freeze_n=1,
         lr=1e-4,
         epochs=1000,
         patience=150,
-        exp_tag='exp14_multifidelity_v3',
+        exp_tag='exp14_multifidelity',
     )
     all_results.append(exp14_result)
 
-    # ── 实验 15: 纯高保真 v3 ──
-    _, exp15_result = train_hifi_only_v3(
+    # ── 实验 15: 纯高保真 ──
+    _, exp15_result = train_hifi_only(
         X_tr, y_tr, X_ev, y_ev, X_te, y_te,
         lr=1e-4,
         epochs=1000,
         patience=150,
-        exp_tag='exp15_hifi_only_v3',
+        exp_tag='exp15_hifi_only',
     )
     all_results.append(exp15_result)
 
     # ── 保存结果 ──
-    result_path = RESULTS_DIR / 'logs/train_v3_results.json'
+    result_path = RESULTS_DIR / 'logs/train_lian2025_results.json'
     os.makedirs(result_path.parent, exist_ok=True)
     with open(result_path, 'w', encoding='utf-8') as f:
         json.dump(all_results, f, ensure_ascii=False, indent=2)
@@ -674,12 +679,12 @@ if CLI_MODE == 'main':
     # ── 对比图 ──
     _plot_comparison(
         [exp14_result, exp15_result],
-        save_path=RESULTS_DIR / 'plots/lian_v3_comparison.png',
+        save_path=RESULTS_DIR / 'plots/lian_comparison.png',
     )
 
     # ── 最终对比打印 ──
     print("\n" + "="*60)
-    print("v3 实验最终对比 (测试集 360条)")
+    print("Lian 2025 实验最终对比 (测试集 360条)")
     print("="*60)
     print(f"{'实验':<30} {'test R²':>8} {'test MAE':>10} {'test MAPE':>10} {'best epoch':>12}")
     print("─"*75)
@@ -703,7 +708,7 @@ if CLI_MODE == 'main':
 
 
 # ─────────────────────────────────────────────────────────
-# 实验 16: 多保真 v3 架构搜索
+# 实验 16: 多保真架构搜索
 # ─────────────────────────────────────────────────────────
 
 def train_arch_search(
@@ -719,7 +724,7 @@ def train_arch_search(
 ):
     """
     对多组网络结构做多保真微调，统一在测试集上报告，比较架构影响。
-    low_model_factory: 每次调用返回一个新的低保真预训练好的 LianPINN_v3 实例
+    low_model_factory: 每次调用返回一个新的低保真预训练模型
     """
     all_results = []
 
@@ -732,32 +737,34 @@ def train_arch_search(
         print("\n" + "="*60)
         print(f"实验 16 架构变体: {exp_tag}")
 
-        # 用低保真预训练好的权重初始化 v3 模型
-        # 低保真模型是 LianPINN_v2 (hidden=64, layers=3, tanh)
+        # 用低保真预训练权重初始化可配置模型
+        # 低保真模型是 LianPINN (hidden=64, layers=3, tanh)
         # 若架构相同则直接 deepcopy；若不同则只迁移兼容的权重
         base_model = low_model_factory()
-        v3_model   = LianPINN_v3(hidden_dim, n_hidden_layers, activation)
+        candidate_model = ConfigurableLianPINN(
+            hidden_dim, n_hidden_layers, activation,
+        )
 
-        _transfer_weights(base_model, v3_model)
+        _transfer_weights(base_model, candidate_model)
 
-        total     = sum(p.numel() for p in v3_model.parameters())
-        print(f"架构: {v3_model.describe()}")
+        total     = sum(p.numel() for p in candidate_model.parameters())
+        print(f"架构: {candidate_model.describe()}")
 
         # 冻结前 freeze_n 个 Linear 层
-        linear_idx = [i for i, layer in enumerate(v3_model.net)
+        linear_idx = [i for i, layer in enumerate(candidate_model.net)
                       if isinstance(layer, torch.nn.Linear)]
         freeze_set = set(linear_idx[:freeze_n])
-        for i, layer in enumerate(v3_model.net):
+        for i, layer in enumerate(candidate_model.net):
             if i in freeze_set:
                 for p in layer.parameters():
                     p.requires_grad = False
 
-        trainable = sum(p.numel() for p in v3_model.parameters() if p.requires_grad)
+        trainable = sum(p.numel() for p in candidate_model.parameters() if p.requires_grad)
         frozen    = total - trainable
         print(f"冻结: {frozen:,} ({frozen/total*100:.1f}%)  可训练: {trainable:,} ({trainable/total*100:.1f}%)")
 
         optimizer = optim.Adam(
-            [p for p in v3_model.parameters() if p.requires_grad], lr=lr)
+            [p for p in candidate_model.parameters() if p.requires_grad], lr=lr)
 
         history = {'train_loss':[], 'eval_r2':[], 'eval_mae':[]}
         best_r2    = float('-inf')
@@ -767,14 +774,14 @@ def train_arch_search(
         t0         = time.time()
 
         for ep in range(1, epochs + 1):
-            v3_model.train()
+            candidate_model.train()
             optimizer.zero_grad()
-            pred, _ = v3_model(X_tr)
+            pred, _ = candidate_model(X_tr)
             loss = log_mse(pred, y_tr)
             loss.backward()
             optimizer.step()
 
-            ev_loss, ev_r2, ev_mae, ev_mape, _, _ = compute_metrics(v3_model, X_ev, y_ev)
+            ev_loss, ev_r2, ev_mae, ev_mape, _, _ = compute_metrics(candidate_model, X_ev, y_ev)
             history['train_loss'].append(loss.item())
             history['eval_r2'].append(ev_r2)
             history['eval_mae'].append(ev_mae)
@@ -787,7 +794,7 @@ def train_arch_search(
                 best_r2    = ev_r2
                 best_epoch = ep
                 wait       = 0
-                best_state = copy.deepcopy(v3_model.state_dict())
+                best_state = copy.deepcopy(candidate_model.state_dict())
             else:
                 wait += 1
                 if wait >= patience:
@@ -795,14 +802,14 @@ def train_arch_search(
                     break
 
         elapsed = time.time() - t0
-        v3_model.load_state_dict(best_state)
+        candidate_model.load_state_dict(best_state)
 
-        _, tr_r2, tr_mae, tr_mape, _, _ = compute_metrics(v3_model, X_tr, y_tr)
-        _, ev_r2, ev_mae, ev_mape, _, _ = compute_metrics(v3_model, X_ev, y_ev)
-        _, te_r2, te_mae, te_mape, te_pred, _ = compute_metrics(v3_model, X_te, y_te)
+        _, tr_r2, tr_mae, tr_mape, _, _ = compute_metrics(candidate_model, X_tr, y_tr)
+        _, ev_r2, ev_mae, ev_mape, _, _ = compute_metrics(candidate_model, X_ev, y_ev)
+        _, te_r2, te_mae, te_mape, te_pred, _ = compute_metrics(candidate_model, X_te, y_te)
 
         result = {
-            'phase': 'arch_search_v3',
+            'phase': 'arch_search',
             'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M'),
             'exp_tag': exp_tag,
             'arch': {
@@ -825,10 +832,10 @@ def train_arch_search(
         print(f"  测试集: R²={te_r2:.4f}  MAE={te_mae:.4f} Pa  MAPE={te_mape:.1f}%")
 
         # 保存测试集散点图
-        _plot_v3_scatter(
+        _plot_scatter(
             y_te.numpy(), te_pred, exp_tag,
             title=f'{exp_tag}\ntest R²={te_r2:.4f}  MAE={te_mae:.4f} Pa',
-            save_path=RESULTS_DIR / f'plots/lian_v3_{exp_tag}_test_scatter.png',
+            save_path=RESULTS_DIR / f'plots/lian_{exp_tag}_test_scatter.png',
         )
 
         all_results.append(result)
@@ -838,7 +845,7 @@ def train_arch_search(
 
 def _transfer_weights(src_model, dst_model):
     """
-    将 src_model (LianPINN_v2/v3) 的权重迁移到 dst_model (LianPINN_v3)。
+    将基础 LianPINN 的兼容权重迁移到 ConfigurableLianPINN。
     只迁移形状完全匹配的层（按 net 中的位置顺序逐层对比）。
     不匹配的层保持随机初始化。
     """
@@ -858,13 +865,13 @@ def _transfer_weights(src_model, dst_model):
 
 
 # ─────────────────────────────────────────────────────────
-# 架构搜索入口 (python -m multi_fidelity.src.training.train_v3 arch)
+# 架构搜索入口 (python -m multi_fidelity.src.training.train_lian2025 arch)
 # ─────────────────────────────────────────────────────────
 
 if CLI_MODE == 'arch':
 
     print("\n" + "="*60)
-    print("实验 16: 多保真 v3 架构搜索")
+    print("实验 16: 多保真架构搜索")
     print("="*60)
 
     hifi_path = HIFI_DATA_PATH
@@ -905,7 +912,7 @@ if CLI_MODE == 'arch':
     )
 
     # 保存结果
-    result_path = RESULTS_DIR / 'logs/train_v3_arch_results.json'
+    result_path = RESULTS_DIR / 'logs/train_lian2025_arch_results.json'
     os.makedirs(result_path.parent, exist_ok=True)
     with open(result_path, 'w', encoding='utf-8') as f:
         json.dump(arch_results, f, ensure_ascii=False, indent=2)
@@ -939,12 +946,12 @@ if CLI_MODE == 'arch':
     # 对比柱状图
     _plot_comparison(
         arch_results_sorted,
-        save_path=RESULTS_DIR / 'plots/lian_v3_arch_comparison.png',
+        save_path=RESULTS_DIR / 'plots/lian_arch_comparison.png',
     )
 
 
 # ─────────────────────────────────────────────────────────
-# 实验 17: 多保真 v3 超参搜索
+# 实验 17: 多保真超参搜索
 # ─────────────────────────────────────────────────────────
 
 def train_hparam_search(
@@ -1028,7 +1035,7 @@ def train_hparam_search(
         _, te_r2, te_mae, te_mape, te_pred, _ = compute_metrics(model, X_te, y_te)
 
         result = {
-            'phase': 'hparam_search_v3',
+            'phase': 'hparam_search',
             'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M'),
             'exp_tag': exp_tag,
             'freeze_n': freeze_n,
@@ -1049,13 +1056,13 @@ def train_hparam_search(
 
 
 # ─────────────────────────────────────────────────────────
-# 超参搜索入口 (python -m multi_fidelity.src.training.train_v3 hparam)
+# 超参搜索入口 (python -m multi_fidelity.src.training.train_lian2025 hparam)
 # ─────────────────────────────────────────────────────────
 
 if CLI_MODE == 'hparam':
 
     print("\n" + "="*60)
-    print("实验 17: 多保真 v3 超参搜索 (freeze_n × lr × weight_decay)")
+    print("实验 17: 多保真超参搜索 (freeze_n × lr × weight_decay)")
     print("="*60)
 
     hifi_path = HIFI_DATA_PATH
@@ -1089,7 +1096,7 @@ if CLI_MODE == 'hparam':
     )
 
     # 保存
-    result_path = RESULTS_DIR / 'logs/train_v3_hparam_results.json'
+    result_path = RESULTS_DIR / 'logs/train_lian2025_hparam_results.json'
     os.makedirs(result_path.parent, exist_ok=True)
     with open(result_path, 'w', encoding='utf-8') as f:
         json.dump(hp_results, f, ensure_ascii=False, indent=2)
@@ -1144,9 +1151,9 @@ if CLI_MODE == 'hparam':
 
 def run_ablation(
     X_te, y_te,
-    low_model_path  = 'multi_fidelity/models/low_fidelity/lian_v3_low.pth',
-    hifi_model_path = 'multi_fidelity/models/high_fidelity/lian_v3_hifi_only.pth',
-    mf_model_path   = 'multi_fidelity/models/high_fidelity/lian_v3_multifidelity.pth',
+    low_model_path  = 'multi_fidelity/models/lian2025/low_fidelity.pth',
+    hifi_model_path = 'multi_fidelity/models/lian2025/hifi_only.pth',
+    mf_model_path   = 'multi_fidelity/models/lian2025/multifidelity.pth',
 ):
     """
     在同一测试集上收集四组预测值，画消融对比图：
@@ -1172,7 +1179,7 @@ def run_ablation(
           f"R²={r2_A:.4f}  MAE={mae_A:.4f} Pa  MAPE={mape_A:.1f}%")
 
     # ── B: 低保真模型 ──
-    low_model = LianPINN_v2(hidden_dim=64)
+    low_model = LianPINN(hidden_dim=64)
     ckpt = torch.load(project_root / low_model_path, weights_only=False)
     low_model.load_state_dict(ckpt['model_state_dict'])
     _, r2_B, mae_B, mape_B, pred_B, _ = compute_metrics(low_model, X_te, y_te)
@@ -1180,7 +1187,7 @@ def run_ablation(
           f"R²={r2_B:.4f}  MAE={mae_B:.4f} Pa  MAPE={mape_B:.1f}%")
 
     # ── C: 只用高保真（30条，无预训练）──
-    hifi_model = LianPINN_v2(hidden_dim=64)
+    hifi_model = LianPINN(hidden_dim=64)
     ckpt = torch.load(project_root / hifi_model_path, weights_only=False)
     hifi_model.load_state_dict(ckpt['model_state_dict'])
     _, r2_C, mae_C, mape_C, pred_C, _ = compute_metrics(hifi_model, X_te, y_te)
@@ -1188,7 +1195,7 @@ def run_ablation(
           f"R²={r2_C:.4f}  MAE={mae_C:.4f} Pa  MAPE={mape_C:.1f}%")
 
     # ── D: 多保真融合 ──
-    mf_model = LianPINN_v2(hidden_dim=64)
+    mf_model = LianPINN(hidden_dim=64)
     ckpt = torch.load(project_root / mf_model_path, weights_only=False)
     mf_model.load_state_dict(ckpt['model_state_dict'])
     _, r2_D, mae_D, mape_D, pred_D, _ = compute_metrics(mf_model, X_te, y_te)
@@ -1207,7 +1214,7 @@ def run_ablation(
     ]
 
     _plot_ablation(y_true, groups,
-                   save_path=RESULTS_DIR / 'plots/lian_v3_ablation.png')
+                   save_path=RESULTS_DIR / 'plots/lian_ablation.png')
 
     return groups
 
@@ -1285,7 +1292,7 @@ def _plot_ablation(y_true, groups, save_path):
 
 
 # ─────────────────────────────────────────────────────────
-# 消融实验入口 (python -m multi_fidelity.src.training.train_v3 ablation)
+# 消融实验入口 (python -m multi_fidelity.src.training.train_lian2025 ablation)
 # ─────────────────────────────────────────────────────────
 
 if CLI_MODE == 'ablation':
@@ -1327,7 +1334,7 @@ if CLI_MODE == 'ablation':
 
 # ─────────────────────────────────────────────────────────
 # 补充对比：数据量充足场景
-# 运行: python -m multi_fidelity.src.training.train_v3 sufficient
+# 运行: python -m multi_fidelity.src.training.train_lian2025 sufficient
 # 320 训练 / 40 评估 / 40 测试 — 纯HF vs 多保真，等量公平对比
 # ─────────────────────────────────────────────────────────
 
@@ -1348,7 +1355,7 @@ if CLI_MODE == 'sufficient':
 
     # ── 策略1: 纯高保真 (320条，随机初始化) ──
     print("\n[策略1] 纯高保真 (320条，随机初始化)...")
-    _, res_hifi = train_hifi_only_v3(
+    _, res_hifi = train_hifi_only(
         X_tr, y_tr, X_ev, y_ev, X_te, y_te,
         lr=1e-4, epochs=2000, patience=200,
         exp_tag='sufficient_hifi_only_320',
@@ -1356,13 +1363,13 @@ if CLI_MODE == 'sufficient':
 
     # ── 策略2: 多保真 (LF预训练 + 320条微调) ──
     print("\n[策略2] 多保真 (LF预训练 + 320条微调)...")
-    low_model = LianPINN_v2(hidden_dim=64)
+    low_model = LianPINN(hidden_dim=64)
     low_ckpt = torch.load(
-        project_root / 'multi_fidelity/models/low_fidelity/lian_v3_low.pth',
+        project_root / 'multi_fidelity/models/lian2025/low_fidelity.pth',
         weights_only=False,
     )
     low_model.load_state_dict(low_ckpt['model_state_dict'])
-    _, res_mf = train_multifidelity_v3(
+    _, res_mf = train_multifidelity(
         low_model,
         X_tr, y_tr, X_ev, y_ev, X_te, y_te,
         freeze_n=1, lr=1e-4, epochs=2000, patience=200,

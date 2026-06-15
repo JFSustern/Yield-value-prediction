@@ -8,16 +8,16 @@ import sys
 import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-from multi_fidelity.src.training.train_v3 import (
+from multi_fidelity.src.training.train_lian2025 import (
     project_root,
     split_hifi_data,
-    train_hifi_only_v3,
+    train_hifi_only,
     train_low_fidelity,
-    train_multifidelity_v3,
+    train_multifidelity,
 )
 
 SEEDS   = [0, 1, 2, 3, 42]
-HF_PATH = 'data/high_fidelity/hf_all400.csv'
+HF_PATH = 'data/lian2025/high_fidelity/all_400.csv'
 
 
 def main():
@@ -37,13 +37,13 @@ def main():
             n_train=30, n_eval=10, seed=seed,
         )
 
-        _, res_c = train_hifi_only_v3(
+        _, res_c = train_hifi_only(
             X_tr, y_tr, X_ev, y_ev, X_te, y_te,
             lr=1e-4, epochs=1000, patience=150,
             exp_tag=f'ms_hifi_seed{seed}',
             seed=seed,
         )
-        _, res_d = train_multifidelity_v3(
+        _, res_d = train_multifidelity(
             low_model, X_tr, y_tr, X_ev, y_ev, X_te, y_te,
             freeze_n=1, lr=1e-4, epochs=1000, patience=150,
             exp_tag=f'ms_mf_seed{seed}',
@@ -75,7 +75,7 @@ def main():
     print(f"\n  MF增益ΔR²:   {np.mean(gain_r2):+.4f} ± {np.std(gain_r2):.4f}")
     print(f"  MF增益ΔMAPE: {np.mean(gain_mape):+.2f}pp ± {np.std(gain_mape):.2f}pp")
 
-    out = project_root / "multi_fidelity/results/multiseed_results.json"
+    out = project_root / "multi_fidelity/results/lian2025/multiseed_results.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     with open(out, "w", encoding="utf-8") as file:
         json.dump({"records": records, "seeds": SEEDS}, file, indent=2)

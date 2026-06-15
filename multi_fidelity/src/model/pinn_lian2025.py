@@ -1,5 +1,5 @@
 """
-LianPINN v2 - 严格对齐论文公式
+LianPINN - 严格对齐论文公式
 
 论文: Lian et al., Materials 2025, 18, 2983
 公式: τ = m1 * φ³ / [φ_max(SP) * (φ_max(SP) - φ)]
@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 
 
-class LianPINN_v2(nn.Module):
+class LianPINN(nn.Module):
 
     # 论文 Table 6 标定的固定参数
     M1 = 0.72  # Pa
@@ -64,10 +64,10 @@ class LianPINN_v2(nn.Module):
 
 
 if __name__ == "__main__":
-    model = LianPINN_v2(hidden_dim=64)
+    model = LianPINN(hidden_dim=64)
     total = sum(p.numel() for p in model.parameters())
-    print(f"模型: LianPINN_v2  |  参数量: {total:,}")
-    print(f"输入: [Phi, SP_percent]  |  固定参数: m1={LianPINN_v2.M1} Pa")
+    print(f"模型: LianPINN  |  参数量: {total:,}")
+    print(f"输入: [Phi, SP_percent]  |  固定参数: m1={LianPINN.M1} Pa")
 
     # 模拟 Table 6 样本
     test_cases = torch.tensor([

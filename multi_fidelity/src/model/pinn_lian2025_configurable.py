@@ -1,12 +1,12 @@
 """
-LianPINN v3 - 可配置网络结构
+ConfigurableLianPINN - 可配置网络结构
 
-在 v2 基础上支持:
+在基础 LianPINN 上支持:
   - 可变宽度 (hidden_dim)
   - 可变深度 (n_hidden_layers: 隐藏层数量，不含输入/输出层)
   - 可选激活函数 (tanh / gelu / silu)
 
-物理公式与 v2 完全相同:
+物理公式与基础模型完全相同:
   τ = m1 * φ³ / [φ_max(SP) * (φ_max(SP) - φ)]
   m1 = 0.72 Pa (固定)
 """
@@ -22,7 +22,7 @@ _ACTIVATIONS = {
 }
 
 
-class LianPINN_v3(nn.Module):
+class ConfigurableLianPINN(nn.Module):
 
     M1 = 0.72  # Pa
 
@@ -31,7 +31,7 @@ class LianPINN_v3(nn.Module):
         Args:
             hidden_dim:       每个隐藏层的宽度
             n_hidden_layers:  隐藏层数量 (不含输入投影层和输出层)
-                              n_hidden_layers=3 等价于 v2 的 4 层 Linear 结构
+                              n_hidden_layers=3 等价于基础模型的 4 层 Linear 结构
             activation:       'tanh' | 'gelu' | 'silu'
         """
         super().__init__()
@@ -80,19 +80,19 @@ class LianPINN_v3(nn.Module):
 
     def describe(self):
         total = sum(p.numel() for p in self.parameters())
-        return (f"LianPINN_v3(hidden={self.hidden_dim}, "
+        return (f"ConfigurableLianPINN(hidden={self.hidden_dim}, "
                 f"layers={self.n_hidden_layers}, act={self.activation}) "
                 f"| {total:,} params")
 
 
 if __name__ == "__main__":
     configs = [
-        (64,  3, 'tanh'),   # v2 基线
+        (64,  3, 'tanh'),   # 基础模型
         (128, 3, 'tanh'),   # 加宽
         (64,  5, 'tanh'),   # 加深
         (128, 4, 'gelu'),   # 宽+深+gelu
         (64,  3, 'silu'),   # 换激活
     ]
     for h, l, a in configs:
-        m = LianPINN_v3(h, l, a)
+        m = ConfigurableLianPINN(h, l, a)
         print(m.describe())
