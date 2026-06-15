@@ -18,12 +18,6 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-本机已有 Conda 环境时也可直接使用：
-
-```bash
-conda activate pytorch
-```
-
 ## 项目结构
 
 ```text
@@ -113,7 +107,7 @@ python -m multi_fidelity.src.data.generator_zhou1999
 - `multi_fidelity/src/training/run_zhou1999_experiment.py`：Zhou 四策略实验。
 - `multi_fidelity/src/training/run_zhou1999_baselines.py`：Zhou 多方法基线。
 
-## 交接注意事项
+## 注意事项
 
 1. `data/lian2025/high_fidelity/all_400.csv` 是当前主实验使用的工作数据，其从 Table 6 数据扩展到 400 条的过程仍需补充来源记录。
 2. `data/zhou1999/high_fidelity/` 是基于论文图形视觉估算、YODEL 标定和噪声模拟得到的工作数据，不应表述为精确数字化的原始实验数据。
