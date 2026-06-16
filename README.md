@@ -103,7 +103,8 @@ python -m multi_fidelity.src.data.generator_zhou1999
 - `multi_fidelity/src/model/pinn_lian2025.py`：Lian 基础模型。
 - `multi_fidelity/src/model/pinn_lian2025_configurable.py`：架构搜索使用的可配置 Lian 模型。
 - `multi_fidelity/src/model/pinn_zhou1999.py`：Zhou/YODEL 模型。
-- `multi_fidelity/src/training/train_lian2025.py`：Lian 主实验、搜索和消融。
+- `multi_fidelity/src/training/train_lian2025.py`：Lian 命令行入口。
+- `multi_fidelity/src/training/lian2025_experiments.py`：Lian 主实验、搜索和消融实现。
 - `multi_fidelity/src/training/run_zhou1999_experiment.py`：Zhou 四策略实验。
 - `multi_fidelity/src/training/run_zhou1999_baselines.py`：Zhou 多方法基线。
 

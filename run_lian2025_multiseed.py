@@ -8,7 +8,7 @@ import sys
 import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-from multi_fidelity.src.training.train_lian2025 import (
+from multi_fidelity.src.training.lian2025_experiments import (
     project_root,
     split_hifi_data,
     train_hifi_only,
