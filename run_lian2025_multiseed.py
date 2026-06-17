@@ -1,5 +1,9 @@
 """
 多种子鲁棒性验证：Lian 2025 HF-only vs PI-MFNN，5个随机种子
+
+新策略:
+  - 400 条数据增强高保真数据 → 每个 seed 随机划分 360 训练 / 40 评估
+  - 固定测试集: 16 条论文 Table 6 原始实验数据（所有 seed 共用同一测试集）
 """
 import json
 import pathlib
@@ -11,9 +15,11 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from multi_fidelity.src.training.lian2025_experiments import (
     project_root,
     split_hifi_data,
+    load_paper_test,
     train_hifi_only,
     train_low_fidelity,
     train_multifidelity,
+    N_TRAIN, N_EVAL,
 )
 
 SEEDS   = [0, 1, 2, 3, 42]
@@ -22,6 +28,10 @@ HF_PATH = 'data/lian2025/high_fidelity/all_400.csv'
 
 def main():
     records = []
+
+    # 固定测试集（所有 seed 共用）
+    X_te, y_te, _ = load_paper_test()
+    print(f"固定测试集: {len(y_te)} 条论文原始实验数据\n")
 
     # LF 预训练结果作为共同起点；每个 HF 分支仍使用各自 seed。
     print("=== 低保真预训练 ===")
@@ -32,9 +42,9 @@ def main():
         print(f"  SEED = {seed}")
         print(f"{'='*55}")
 
-        (X_tr, y_tr, _), (X_ev, y_ev, _), (X_te, y_te, _) = split_hifi_data(
+        (X_tr, y_tr, _), (X_ev, y_ev, _), _ = split_hifi_data(
             project_root / HF_PATH,
-            n_train=30, n_eval=10, seed=seed,
+            n_train=N_TRAIN, n_eval=N_EVAL, seed=seed,
         )
 
         _, res_c = train_hifi_only(
@@ -63,7 +73,7 @@ def main():
         print(json.dumps(record, indent=2))
 
     print("\n" + "="*60)
-    print("多种子汇总 (5 seeds, 360 条测试)")
+    print("多种子汇总 (5 seeds, 固定 16 条论文原始测试集)")
     print("="*60)
     for key in ["C_r2", "C_mape", "D_r2", "D_mape"]:
         vals = [record[key] for record in records]

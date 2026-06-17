@@ -42,7 +42,14 @@ from multi_fidelity.src.model.pinn_lian2025_configurable import ConfigurableLian
 FEATURES = ['Phi', 'SP_percent']
 TARGET   = 'Tau0_Pa'
 RESULTS_DIR = project_root / 'multi_fidelity/results/lian2025'
-HIFI_DATA_PATH = 'data/lian2025/high_fidelity/all_400.csv'
+HIFI_DATA_PATH  = 'data/lian2025/high_fidelity/all_400.csv'
+TABLE6_PATH     = 'data/lian2025/high_fidelity/table6.csv'
+
+# 数据划分策略（新）:
+#   400 条数据增强高保真数据 → 360 训练 / 40 评估
+#   16 条原始论文实验数据（table6.csv）→ 固定测试集
+N_TRAIN = 360
+N_EVAL  = 40
 
 # 随机种子，保证实验可复现
 RANDOM_SEED = 42
@@ -98,12 +105,28 @@ def load_csv(path):
     y = torch.tensor(df[TARGET].values,   dtype=torch.float32)
     return X, y, df
 
-def split_hifi_data(hifi_path, n_train=30, n_eval=10, seed=RANDOM_SEED):
+
+def load_paper_test():
     """
-    从全量高保真数据中随机划分:
-      - n_train 条: 高保真训练集
-      - n_eval  条: 高保真评估集 (early stop 依据)
-      - 剩余    条: 测试集 (最终报告)
+    加载 16 条原始论文实验数据（table6.csv）作为固定测试集。
+    由于无法获取与原论文相同工况下的高保真数据，训练/评估集使用数据增强
+    生成的 400 条数据，测试集使用论文 Table 6 原始实验数据以评估真实泛化性。
+    """
+    path = project_root / TABLE6_PATH
+    X, y, df = load_csv(path)
+    print(f"\n论文原始测试集 (table6.csv): {len(df)} 条")
+    print(f"  Phi=[{df.Phi.min():.3f},{df.Phi.max():.3f}]  "
+          f"SP%=[{df.SP_percent.min():.2f},{df.SP_percent.max():.2f}]  "
+          f"τ₀=[{df.Tau0_Pa.min():.3f},{df.Tau0_Pa.max():.3f}] Pa")
+    return X, y, df
+
+
+def split_hifi_data(hifi_path, n_train=N_TRAIN, n_eval=N_EVAL, seed=RANDOM_SEED):
+    """
+    从全量高保真数据（数据增强生成，400 条）中随机划分:
+      - n_train 条: 训练集（默认 360）
+      - n_eval  条: 评估集，用于 early stop（默认 40）
+    注: 测试集使用论文 Table 6 原始实验数据（16 条），由 load_paper_test() 单独加载。
     """
     df = pd.read_csv(hifi_path)
     total = len(df)
@@ -115,18 +138,15 @@ def split_hifi_data(hifi_path, n_train=30, n_eval=10, seed=RANDOM_SEED):
 
     train_idx = idx[:n_train]
     eval_idx  = idx[n_train:n_train + n_eval]
-    test_idx  = idx[n_train + n_eval:]
 
     df_train = df.iloc[train_idx].reset_index(drop=True)
     df_eval  = df.iloc[eval_idx].reset_index(drop=True)
-    df_test  = df.iloc[test_idx].reset_index(drop=True)
 
     # 保存划分结果到 CSV（方便检查和复现）
     split_dir = Path(hifi_path).parent / 'splits' / f'seed_{seed}'
     split_dir.mkdir(parents=True, exist_ok=True)
     df_train.to_csv(split_dir / 'train.csv', index=False)
     df_eval.to_csv(split_dir  / 'eval.csv',  index=False)
-    df_test.to_csv(split_dir  / 'test.csv',  index=False)
 
     def to_tensor(d):
         X = torch.tensor(d[FEATURES].values, dtype=torch.float32)
@@ -134,7 +154,7 @@ def split_hifi_data(hifi_path, n_train=30, n_eval=10, seed=RANDOM_SEED):
         return X, y, d
 
     print(f"\n高保真数据划分 (seed={seed}):")
-    print(f"  全量: {total} 条")
+    print(f"  全量(增强): {total} 条 → 训练 {n_train} + 评估 {n_eval}")
     print(f"  训练: {len(df_train)} 条  "
           f"Phi=[{df_train.Phi.min():.3f},{df_train.Phi.max():.3f}]  "
           f"SP%=[{df_train.SP_percent.min():.2f},{df_train.SP_percent.max():.2f}]  "
@@ -143,13 +163,11 @@ def split_hifi_data(hifi_path, n_train=30, n_eval=10, seed=RANDOM_SEED):
           f"Phi=[{df_eval.Phi.min():.3f},{df_eval.Phi.max():.3f}]  "
           f"SP%=[{df_eval.SP_percent.min():.2f},{df_eval.SP_percent.max():.2f}]  "
           f"τ₀=[{df_eval.Tau0_Pa.min():.3f},{df_eval.Tau0_Pa.max():.3f}] Pa")
-    print(f"  测试: {len(df_test)} 条  "
-          f"Phi=[{df_test.Phi.min():.3f},{df_test.Phi.max():.3f}]  "
-          f"SP%=[{df_test.SP_percent.min():.2f},{df_test.SP_percent.max():.2f}]  "
-          f"τ₀=[{df_test.Tau0_Pa.min():.3f},{df_test.Tau0_Pa.max():.3f}] Pa")
+    print(f"  测试: 使用 table6.csv (16 条论文原始实验数据)")
     print(f"  已保存至: {split_dir}/")
 
-    return to_tensor(df_train), to_tensor(df_eval), to_tensor(df_test)
+    # 返回 None 占位 test，调用方应从 load_paper_test() 获取测试集
+    return to_tensor(df_train), to_tensor(df_eval), (None, None, None)
 
 
 # ─────────────────────────────────────────────────────────
@@ -399,15 +417,17 @@ def train_multifidelity(
     print(f"\n  结果汇总:")
     print(f"  {'数据集':<20} {'R²':>8} {'MAE':>10} {'MAPE':>8}")
     print(f"  {'─'*50}")
-    print(f"  {'高保真训练集(30条)':<20} {tr_r2:>8.4f} {tr_mae:>8.4f} Pa {tr_mape:>6.1f}%")
-    print(f"  {'高保真评估集(10条)':<20} {ev_r2:>8.4f} {ev_mae:>8.4f} Pa {ev_mape:>6.1f}%  ← early stop")
-    print(f"  {'高保真测试集(360条)':<20} {te_r2:>8.4f} {te_mae:>8.4f} Pa {te_mape:>6.1f}%  ← 最终报告")
+    n_tr = len(y_hifi_train)
+    n_ev = len(y_hifi_eval)
+    print(f"  增强训练集({n_tr}条):          {tr_r2:>8.4f} {tr_mae:>8.4f} Pa {tr_mape:>6.1f}%")
+    print(f"  增强评估集({n_ev}条):          {ev_r2:>8.4f} {ev_mae:>8.4f} Pa {ev_mape:>6.1f}%  ← early stop")
+    print(f"  论文原始测试集(16条):         {te_r2:>8.4f} {te_mae:>8.4f} Pa {te_mape:>6.1f}%  ← 最终报告")
     print(f"{'─'*60}")
 
     _plot_training(history, exp_tag,
                       save_path=RESULTS_DIR / f'plots/lian_{exp_tag}_training.png')
     _plot_scatter(y_hifi_test.numpy(), te_pred, exp_tag,
-                     title=f'Multi-fidelity Test Set (n=360)\n'
+                     title=f'Multi-fidelity Test Set (n=16, paper original)\n'
                            f'R²={te_r2:.4f}  MAE={te_mae:.4f} Pa',
                      save_path=RESULTS_DIR / f'plots/lian_{exp_tag}_test_scatter.png')
 
@@ -533,15 +553,17 @@ def train_hifi_only(
     print(f"\n  结果汇总:")
     print(f"  {'数据集':<20} {'R²':>8} {'MAE':>10} {'MAPE':>8}")
     print(f"  {'─'*50}")
-    print(f"  {'高保真训练集(30条)':<20} {tr_r2:>8.4f} {tr_mae:>8.4f} Pa {tr_mape:>6.1f}%")
-    print(f"  {'高保真评估集(10条)':<20} {ev_r2:>8.4f} {ev_mae:>8.4f} Pa {ev_mape:>6.1f}%  ← early stop")
-    print(f"  {'高保真测试集(360条)':<20} {te_r2:>8.4f} {te_mae:>8.4f} Pa {te_mape:>6.1f}%  ← 最终报告")
+    n_tr2 = len(y_hifi_train)
+    n_ev2 = len(y_hifi_eval)
+    print(f"  增强训练集({n_tr2}条):          {tr_r2:>8.4f} {tr_mae:>8.4f} Pa {tr_mape:>6.1f}%")
+    print(f"  增强评估集({n_ev2}条):          {ev_r2:>8.4f} {ev_mae:>8.4f} Pa {ev_mape:>6.1f}%  ← early stop")
+    print(f"  论文原始测试集(16条):         {te_r2:>8.4f} {te_mae:>8.4f} Pa {te_mape:>6.1f}%  ← 最终报告")
     print(f"{'─'*60}")
 
     _plot_training(history, exp_tag,
                       save_path=RESULTS_DIR / f'plots/lian_{exp_tag}_training.png')
     _plot_scatter(y_hifi_test.numpy(), te_pred, exp_tag,
-                     title=f'HF-only Test Set (n=360)\n'
+                     title=f'HF-only Test Set (n=16, paper original)\n'
                            f'R²={te_r2:.4f}  MAE={te_mae:.4f} Pa',
                      save_path=RESULTS_DIR / f'plots/lian_{exp_tag}_test_scatter.png')
 
@@ -616,7 +638,7 @@ def _plot_comparison(results_list, save_path):
         axes[2].text(i, v + 0.2, f'{v:.1f}%', ha='center', fontsize=10)
 
     plt.suptitle(
-        'Lian 2025: Multi-fidelity vs HF-only (test n=360)',
+        'Lian 2025: Multi-fidelity vs HF-only (test n=16, paper original)',
         fontweight='bold',
     )
     plt.tight_layout()
@@ -630,16 +652,19 @@ def _plot_comparison(results_list, save_path):
 
 if CLI_MODE == 'main':
     print("\n" + "="*60)
-    print("Lian 2025 实验: 验证真实小样本场景下多保真策略的价值")
+    print("Lian 2025 实验: 多保真策略 (数据增强训练集 + 论文原始数据测试)")
     print("="*60)
 
     hifi_path = HIFI_DATA_PATH
 
-    # 数据划分 (固定 seed=42，保证可复现)
-    (X_tr, y_tr, _), (X_ev, y_ev, _), (X_te, y_te, _) = split_hifi_data(
+    # 训练/评估划分 (固定 seed=42，保证可复现): 360 训练 / 40 评估
+    (X_tr, y_tr, _), (X_ev, y_ev, _), _ = split_hifi_data(
         project_root / hifi_path,
-        n_train=30, n_eval=10, seed=RANDOM_SEED,
+        n_train=N_TRAIN, n_eval=N_EVAL, seed=RANDOM_SEED,
     )
+
+    # 固定测试集: 16 条论文 Table 6 原始实验数据
+    X_te, y_te, _ = load_paper_test()
 
     all_results = []
 
@@ -684,7 +709,7 @@ if CLI_MODE == 'main':
 
     # ── 最终对比打印 ──
     print("\n" + "="*60)
-    print("Lian 2025 实验最终对比 (测试集 360条)")
+    print("Lian 2025 实验最终对比 (测试集: 16 条论文原始实验数据)")
     print("="*60)
     print(f"{'实验':<30} {'test R²':>8} {'test MAE':>10} {'test MAPE':>10} {'best epoch':>12}")
     print("─"*75)
@@ -876,9 +901,10 @@ if CLI_MODE == 'arch':
 
     hifi_path = HIFI_DATA_PATH
 
-    (X_tr, y_tr, _), (X_ev, y_ev, _), (X_te, y_te, _) = split_hifi_data(
-        project_root / hifi_path, n_train=30, n_eval=10, seed=RANDOM_SEED,
+    (X_tr, y_tr, _), (X_ev, y_ev, _), _ = split_hifi_data(
+        project_root / hifi_path, n_train=N_TRAIN, n_eval=N_EVAL, seed=RANDOM_SEED,
     )
+    X_te, y_te, _ = load_paper_test()
 
     # 先训练低保真基础模型（只训练一次，所有架构共用同一个预训练起点）
     low_model_base, _ = train_low_fidelity()
@@ -920,7 +946,7 @@ if CLI_MODE == 'arch':
 
     # 汇总打印
     print("\n" + "="*60)
-    print("实验 16 架构搜索汇总 (测试集 360条)")
+    print("实验 16 架构搜索汇总 (测试集: 16 条论文原始实验数据)")
     print("="*60)
     header = f"{'架构':<32} {'参数量':>8} {'test R²':>8} {'test MAE':>10} {'test MAPE':>10} {'best ep':>8}"
     print(header)
@@ -1067,9 +1093,10 @@ if CLI_MODE == 'hparam':
 
     hifi_path = HIFI_DATA_PATH
 
-    (X_tr, y_tr, _), (X_ev, y_ev, _), (X_te, y_te, _) = split_hifi_data(
-        project_root / hifi_path, n_train=30, n_eval=10, seed=RANDOM_SEED,
+    (X_tr, y_tr, _), (X_ev, y_ev, _), _ = split_hifi_data(
+        project_root / hifi_path, n_train=N_TRAIN, n_eval=N_EVAL, seed=RANDOM_SEED,
     )
+    X_te, y_te, _ = load_paper_test()
 
     low_model_base, _ = train_low_fidelity()
 
@@ -1106,7 +1133,7 @@ if CLI_MODE == 'hparam':
     hp_sorted = sorted(hp_results, key=lambda r: r['test']['r2'], reverse=True)
 
     print("\n" + "="*60)
-    print("实验 17 超参搜索汇总 Top-15 (测试集 360条)")
+    print("实验 17 超参搜索汇总 Top-15 (测试集: 16 条论文原始实验数据)")
     print("="*60)
     header = (f"{'配置':<38} {'freeze':>6} {'lr':>8} {'wd':>8} "
               f"{'test R²':>8} {'test MAE':>10} {'best ep':>8}")
@@ -1248,7 +1275,7 @@ def _plot_ablation(y_true, groups, save_path):
     ax_scatter.set_xlim(lim); ax_scatter.set_ylim(lim)
     ax_scatter.set_xlabel('True τ₀ (Pa)', fontsize=11)
     ax_scatter.set_ylabel('Predicted τ₀ (Pa)', fontsize=11)
-    ax_scatter.set_title('Predicted vs True (test set, n=360)', fontsize=11)
+    ax_scatter.set_title('Predicted vs True (paper original test, n=16)', fontsize=11)
     ax_scatter.legend(fontsize=7.5, loc='upper left')
     ax_scatter.grid(True, alpha=0.25)
 
@@ -1284,7 +1311,7 @@ def _plot_ablation(y_true, groups, save_path):
                     ha='center', va='bottom', fontsize=8.5, fontweight='bold')
 
     fig.suptitle('Ablation Study: Physics / Low-fidelity / High-fidelity / Multi-fidelity\n'
-                 f'Test set: 360 samples  |  Training HF data: 30 samples',
+                 f'Test set: 16 paper original samples  |  Training HF data: {N_TRAIN} samples (augmented)',
                  fontsize=12, fontweight='bold', y=1.01)
     plt.savefig(save_path, dpi=160, bbox_inches='tight')
     plt.close()
@@ -1298,22 +1325,23 @@ def _plot_ablation(y_true, groups, save_path):
 if CLI_MODE == 'ablation':
 
     print("\n" + "="*60)
-    print("实验 18: 消融实验 — 四种策略在测试集上的对比")
+    print("实验 18: 消融实验 — 四种策略在论文原始测试集上的对比")
     print("="*60)
 
     hifi_path = HIFI_DATA_PATH
 
-    (X_tr, y_tr, _), (X_ev, y_ev, _), (X_te, y_te, _) = split_hifi_data(
-        project_root / hifi_path, n_train=30, n_eval=10, seed=RANDOM_SEED,
+    (X_tr, y_tr, _), (X_ev, y_ev, _), _ = split_hifi_data(
+        project_root / hifi_path, n_train=N_TRAIN, n_eval=N_EVAL, seed=RANDOM_SEED,
     )
+    X_te, y_te, _ = load_paper_test()
 
-    print(f"\n测试集: {len(y_te)} 条")
+    print(f"\n测试集: {len(y_te)} 条 (论文原始实验数据)")
 
     groups = run_ablation(X_te, y_te)
 
     # 汇总打印
     print("\n" + "="*60)
-    print("消融实验汇总 (测试集 360 条)")
+    print("消融实验汇总 (测试集: 16 条论文原始实验数据)")
     print("="*60)
     print(f"  {'策略':<40} {'R²':>8} {'MAE':>10} {'MAPE':>8}")
     print("  " + "─"*68)
@@ -1341,17 +1369,20 @@ if CLI_MODE == 'ablation':
 if CLI_MODE == 'sufficient':
 
     print("\n" + "="*60)
-    print("补充实验: 数据量充足场景等量对比 (320 HF 训练)")
+    print("补充实验: 数据量充足场景等量对比")
+    print("注: 新策略下全量400条均用于训练/评估，此模式已不适用")
+    print("    测试集固定为 16 条论文原始实验数据")
     print("="*60)
 
     hifi_path = HIFI_DATA_PATH
 
-    # 320 训练 / 40 评估(早停) / 40 测试
-    (X_tr, y_tr, _), (X_ev, y_ev, _), (X_te, y_te, _) = split_hifi_data(
+    # 保留兼容: 从 400 条中取 320 训练 / 40 评估 / 固定 16 条测试
+    (X_tr, y_tr, _), (X_ev, y_ev, _), _ = split_hifi_data(
         project_root / hifi_path,
         n_train=320, n_eval=40, seed=RANDOM_SEED,
     )
-    print(f"  训练: {len(y_tr)} 条 | 评估: {len(y_ev)} 条 | 测试: {len(y_te)} 条")
+    X_te, y_te, _ = load_paper_test()
+    print(f"  训练: {len(y_tr)} 条 | 评估: {len(y_ev)} 条 | 测试: {len(y_te)} 条(论文原始)")
 
     # ── 策略1: 纯高保真 (320条，随机初始化) ──
     print("\n[策略1] 纯高保真 (320条，随机初始化)...")
